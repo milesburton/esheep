@@ -11,70 +11,8 @@ const original = JSON.parse(
   fs.readFileSync(fileURLToPath(new URL('./structure.json', import.meta.url)), 'utf8'),
 );
 
-/** Every interval is divided by this, so the whole sheep moves and animates faster. */
-const TEMPO = 2;
-/** Extra stride for the slow walking animations (the classic walk is only ~10 px/s). */
-const WALK_BOOST = 3;
-const WALKERS = new Set([
-  'walk',
-  'walk_win2',
-  'walk_task2',
-  'vertical_walk_up',
-  'vertical_walk_down',
-  'top_walk2',
-]);
-
-const numeric = /^-?\d+(\.\d+)?$/;
-const scaled = (v, k) => (numeric.test(String(v)) ? String(Number(v) * k) : v);
-
-/** Weight overrides: [animation, list, target id, only] -> new probability. */
-const WEIGHTS = [
-  // Climb the screen edges and walk the ceiling far more often than the classic 2%.
-  ['walk', 'border', 37, 'vertical', 30],
-  ['walk_win2', 'border', 37, 'vertical', 30],
-  ['walk_task2', 'border', 37, 'vertical', 30],
-  // Graze, wee, doze and sprint more often.
-  ['rotate1b', 'next', 26, 'taskbar', 20],
-  ['walk', 'next', 11, 'window', 10],
-  ['walk', 'next', 15, 'none', 10],
-  ['walk_win2', 'next', 17, 'none', 10],
-  ['walk_win2', 'next', 19, 'none', 10],
-  ['walk_task2', 'next', 17, 'none', 10],
-  ['walk_task2', 'next', 19, 'none', 10],
-  ['walk', 'next', 35, 'taskbar', 25],
-  ['look_down', 'next', 44, 'none', 70],
-];
-/** Transitions the classic pack lacks entirely, so the rest of the sheet gets used. */
-const EXTRA = [
-  ['walk_task2', 'next', { p: 8, only: 'taskbar', id: 27 }], // grow a flower
-  ['walk_task2', 'next', { p: 6, only: 'taskbar', id: 8 }], // boing
-  ['walk', 'next', { p: 8, only: 'taskbar', id: 27 }],
-  ['walk', 'next', { p: 6, only: 'taskbar', id: 8 }],
-];
-/** Spawn index -> weight: the bath and the black sheep walk-on turn up more often. */
-const SPAWN_WEIGHTS = { 2: 8, 3: 6 };
-
-const tune = (src) => {
-  const anims = JSON.parse(JSON.stringify(src.animations)).map((a) => {
-    const speed = (pt) => ({
-      ...pt,
-      x: WALKERS.has(a.name) ? scaled(pt.x, WALK_BOOST) : pt.x,
-      y: WALKERS.has(a.name) ? scaled(pt.y, WALK_BOOST) : pt.y,
-      interval: scaled(pt.interval, 1 / TEMPO),
-    });
-    return { ...a, start: speed(a.start), end: speed(a.end) };
-  });
-  for (const [name, list, id, only, p] of WEIGHTS)
-    for (const n of anims.find((a) => a.name === name)?.[list] ?? [])
-      if (n.id === id && n.only === only) n.p = p;
-  for (const [name, list, n] of EXTRA) {
-    const a = anims.find((x) => x.name === name);
-    if (a && !a[list].some((e) => e.id === n.id && e.only === n.only)) a[list].push(n);
-  }
-  const spawns = src.spawns.map((s, i) => ({ ...s, p: SPAWN_WEIGHTS[i] ?? s.p }));
-  return { animations: anims, spawns };
-};
-const structure = tune(original);
+// The pack stores the classic (untuned) sequencing; src/main/tune.ts livens up every classic pack at load.
+const structure = original;
 
 export const buildWoolly = () => {
   const names = [...new Set(structure.animations.flatMap((a) => a.frames))];

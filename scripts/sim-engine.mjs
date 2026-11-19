@@ -9,6 +9,7 @@ import { nextRandom } from '../dist/web/core/rng.js';
 
 const root = path.join(fileURLToPath(new URL('.', import.meta.url)), '..');
 const { parsePackXml } = createRequire(import.meta.url)('../dist/main/pack.js');
+const { tunePack } = createRequire(import.meta.url)('../dist/main/tune.js');
 const [name = 'woolly', minutes = '30', runs = '60'] = process.argv.slice(2);
 const xml = path.join(root, 'assets', 'packs', name, 'animations.xml');
 if (!fs.existsSync(xml)) {
@@ -16,9 +17,9 @@ if (!fs.existsSync(xml)) {
   process.exit(1);
 }
 
-const pack = parsePackXml(fs.readFileSync(xml, 'utf8'), name);
+const pack = tunePack(parsePackXml(fs.readFileSync(xml, 'utf8'), name));
 const cp = compilePack(pack);
-const tile = 64;
+const tile = 40; // both classic sheets use 40px tiles
 const cfg = { size: tile, scale: 1 };
 // Two side-by-side monitors plus a window floating on the left one.
 const world = {

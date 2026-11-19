@@ -1,6 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
 import * as fs from 'fs';
 import * as path from 'path';
+import { tunePack } from './tune';
 
 export const BUILTIN = 'builtin';
 
@@ -90,5 +91,5 @@ export const loadPack = (assetsDir: string, name: string): Pack => {
   if (name === BUILTIN || !listPacks(assetsDir).includes(name))
     return { kind: 'bounce', name: BUILTIN };
   const xml = fs.readFileSync(path.join(packsDir(assetsDir), name, 'animations.xml'), 'utf8');
-  return parsePackXml(xml, name);
+  return tunePack(parsePackXml(xml, name));
 };

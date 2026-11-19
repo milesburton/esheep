@@ -86,3 +86,11 @@ animations play instead of the sheep silently dropping off.
 Several sheep: the demo keeps one canvas and `Stage` per sheep; the Electron app opens one
 transparent window per sheep (renderers are independent, IPC replies go to the sender's window),
 with `count` (1-12) in prefs, Add/Remove in the tray and a Sheep field in Settings.
+
+## 13. Tuning is applied at load, to every classic pack
+
+The faster tempo and tuned weights live in `src/main/tune.ts` (pure, unit-tested) and are applied by
+`loadPack` and the demo build, not baked into any pack. The generated `woolly` pack therefore stores
+the classic sequencing untouched, and the local-only `original` art gets the same liveliness.
+`npm run demo:original` (`build-demo.mjs --with-original`) adds the original art to a local demo
+build behind a `packs/index.json` listing; CI never passes the flag, so it cannot be published.

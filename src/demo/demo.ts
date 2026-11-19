@@ -274,17 +274,35 @@ $('remove').addEventListener('click', () => {
 });
 $('reset').addEventListener('click', () => initial.forEach((p, w) => placeWindow(w, p.x, p.y)));
 
+const PACK_LABELS: Record<string, string> = {
+  woolly: 'Woolly (all 56 animations)',
+  original: 'Original eSheep (local only)',
+};
+/** The build lists which classic packs it shipped; the bounce sheep is always available. */
+const fillPacks = async (): Promise<void> => {
+  const names = await fetch('packs/index.json')
+    .then((r) => (r.ok ? (r.json() as Promise<string[]>) : ['woolly']))
+    .catch(() => ['woolly']);
+  const select = $<HTMLSelectElement>('pack');
+  select.replaceChildren(
+    ...names.map((n) => new Option(PACK_LABELS[n] ?? n, n)),
+    new Option('Bounce (screensaver)', 'bounce'),
+  );
+};
+
 buildMonitors(false);
-void start('woolly').then(() => {
-  if (manual) return;
-  let last = performance.now();
-  const frame = (now: number): void => {
-    tickAll(Math.min(now - last, 100));
-    last = now;
+void fillPacks()
+  .then(() => start('woolly'))
+  .then(() => {
+    if (manual) return;
+    let last = performance.now();
+    const frame = (now: number): void => {
+      tickAll(Math.min(now - last, 100));
+      last = now;
+      requestAnimationFrame(frame);
+    };
     requestAnimationFrame(frame);
-  };
-  requestAnimationFrame(frame);
-});
+  });
 
 /** Test seam (also handy in the console): deterministic stepping and state inspection. */
 Object.assign(window, {

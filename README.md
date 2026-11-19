@@ -112,6 +112,11 @@ tile sheet, probability-weighted transitions, `border` and `gravity` hooks) and 
 
 ### The original eSheep art
 
+See it in the demo on your own machine with `npm run fetch-original && npm run demo:original`; that
+build adds an "Original eSheep (local only)" option. The public demo never includes it. Every classic
+pack, original or generated, is livened up at load time by [`src/main/tune.ts`](src/main/tune.ts)
+(faster tempo and stride, tuned transition weights).
+
 `npm run fetch-original` downloads the classic `esheep64` pack from
 [Adrianotiger/desktopPet](https://github.com/Adrianotiger/desktopPet) into `assets/packs/original/`.
 That project's code is MIT, but the sheep artwork is Tatsutoshi Nomura's character for Fuji Television
