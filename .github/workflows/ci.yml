@@ -96,7 +96,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   readme:
     # Commits the regenerated README, screenshots and badges. [skip ci] stops it re-triggering CI.
