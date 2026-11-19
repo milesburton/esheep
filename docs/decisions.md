@@ -47,3 +47,11 @@ git-ignored folder that is excluded from installers and never reaches the demo. 
 
 Pills and screenshots are rewritten by `npm run readme` in CI from the real reports, and committed by
 a bot with `[skip ci]`. A pure, unit-tested module (`src/tools/metrics.ts`) does the rendering.
+
+## 9. Electron 45 and electron-builder 26, not the briefed `^28`
+
+The original brief pinned `electron ^28`. `npm audit` flags Electron 28 (long out of support) and
+electron-builder 24's `tar`/`app-builder-lib` at high or critical severity, and CI gates on high. We
+moved to Electron 45, electron-builder 26 and fast-xml-parser 5. The real-Electron Playwright suite
+passed unchanged, which is the point of having it. Install-script approvals in `package.json` are
+name-based so a dependency bump never silently skips the Electron binary download.
