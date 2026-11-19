@@ -8,6 +8,8 @@ const params = new URLSearchParams(location.search);
 /** `?manual=1` stops the animation loop so tests and screenshots can step time themselves. */
 const manual = params.get('manual') === '1';
 const seed = Number(params.get('seed') ?? Date.now()) >>> 0;
+/** `?pack=woolly` picks the generated sheep; the original eSheep art is the default. */
+const wantedPack = params.get('pack');
 
 const canvas = $<HTMLCanvasElement>('sheep');
 const desk = $('desk');
@@ -275,11 +277,11 @@ $('remove').addEventListener('click', () => {
 $('reset').addEventListener('click', () => initial.forEach((p, w) => placeWindow(w, p.x, p.y)));
 
 const PACK_LABELS: Record<string, string> = {
-  woolly: 'Woolly (all 56 animations)',
-  original: 'Original eSheep (local only)',
+  woolly: 'Woolly (generated, MIT)',
+  original: 'Original eSheep (all 56 animations)',
 };
 /** The build lists which classic packs it shipped; the bounce sheep is always available. */
-const fillPacks = async (): Promise<void> => {
+const fillPacks = async (): Promise<string> => {
   const names = await fetch('packs/index.json')
     .then((r) => (r.ok ? (r.json() as Promise<string[]>) : ['woolly']))
     .catch(() => ['woolly']);
@@ -288,11 +290,14 @@ const fillPacks = async (): Promise<void> => {
     ...names.map((n) => new Option(PACK_LABELS[n] ?? n, n)),
     new Option('Bounce (screensaver)', 'bounce'),
   );
+  const chosen = wantedPack && [...names, 'bounce'].includes(wantedPack) ? wantedPack : names[0];
+  select.value = chosen;
+  return chosen;
 };
 
 buildMonitors(false);
 void fillPacks()
-  .then(() => start('woolly'))
+  .then((name) => start(name))
   .then(() => {
     if (manual) return;
     let last = performance.now();

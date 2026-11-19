@@ -1,4 +1,4 @@
-// Headless soak test of the classic engine against a pack (default: the original, if fetched).
+// Headless soak test of the classic engine against a pack (default: the original).
 // Usage: node scripts/sim-engine.mjs [packName] [simulatedMinutes] [runs]
 import fs from 'node:fs';
 import { createRequire } from 'node:module';

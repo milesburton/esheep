@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const open = async (page: Page, query = 'manual=1&seed=2'): Promise<void> => {
+const open = async (page: Page, query = 'manual=1&seed=2&pack=woolly'): Promise<void> => {
   await page.goto(`/?${query}`);
   await page.waitForFunction(() => window.__demo?.ready());
 };
@@ -52,15 +52,25 @@ test('the woolly sheep falls in from above, lands on the floor and walks', async
   expect(later.y + 40).toBeCloseTo(floor, 0);
 });
 
-test('only redistributable art is served', async ({ page }) => {
+test('the original eSheep art is the default, and the generated pack is still available', async ({
+  page,
+}) => {
   const urls: string[] = [];
   page.on('request', (r) => urls.push(new URL(r.url()).pathname));
-  await open(page);
-  expect(urls).toContain('/packs/woolly.json');
-  expect(urls.some((u) => u.includes('original'))).toBe(false);
-  const pack = await (await page.request.get('/packs/woolly.json')).json();
-  expect(pack.name).toBe('woolly');
-  expect((await page.request.get('/packs/original.json')).status()).toBe(404);
+  await open(page, 'manual=1&seed=2');
+  await expect(page.locator('#pack')).toHaveValue('original');
+  expect(urls).toContain('/packs/original.json');
+  const original = await (await page.request.get('/packs/original.json')).json();
+  expect(original).toMatchObject({ name: 'original', tilesX: 16, tilesY: 11 });
+  expect(original.animations).toHaveLength(56);
+  const woolly = await (await page.request.get('/packs/woolly.json')).json();
+  expect(woolly.name).toBe('woolly');
+  expect(await page.request.get('/packs/index.json').then((r) => r.json())).toEqual([
+    'original',
+    'woolly',
+  ]);
+  await page.locator('#pack').selectOption('woolly');
+  await expect.poll(() => page.evaluate(() => window.__demo.ready())).toBe(true);
 });
 
 test('grab picks the sheep up and it follows the pointer', async ({ page }) => {

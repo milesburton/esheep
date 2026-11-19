@@ -81,7 +81,7 @@ npm run demo         # build and serve the browser demo on http://localhost:4173
 | `npm run test:e2e`        | Playwright: browser demo, plus the real app (below)  |
 | `npm run lint` / `format` | ESLint / Prettier                                    |
 | `npm run readme`          | Refresh the pills and screenshots above from reports |
-| `npm run fetch-original`  | Download the classic sheep for **personal use** only |
+| `npm run fetch-original`  | Re-download the original eSheep pack                 |
 
 The Electron end-to-end tests need a display. On a headless Linux box run them under Xvfb:
 `xvfb-run -a npx playwright test --project=electron`. If your shell sets `ELECTRON_RUN_AS_NODE`
@@ -112,16 +112,14 @@ tile sheet, probability-weighted transitions, `border` and `gravity` hooks) and 
 
 ### The original eSheep art
 
-See it in the demo on your own machine with `npm run fetch-original && npm run demo:original`; that
-build adds an "Original eSheep (local only)" option. The public demo never includes it. Every classic
-pack, original or generated, is livened up at load time by [`src/main/tune.ts`](src/main/tune.ts)
-(faster tempo and stride, tuned transition weights).
-
-`npm run fetch-original` downloads the classic `esheep64` pack from
-[Adrianotiger/desktopPet](https://github.com/Adrianotiger/desktopPet) into `assets/packs/original/`.
-That project's code is MIT, but the sheep artwork is Tatsutoshi Nomura's character for Fuji Television
-and has no clear licence. It is for **personal use only**: the folder is git-ignored, excluded from
-installers, and never part of the demo.
+The classic eSheep artwork (the `esheep64` pack from
+[Adrianotiger/desktopPet](https://github.com/Adrianotiger/desktopPet), sheep by Tatsutoshi Nomura for
+Fuji Television, image rip by LiL_Stenly) is bundled as `assets/packs/original/` and is the demo's
+default. It is included under the repository owner's licence; see
+[`assets/packs/original/NOTICE.md`](assets/packs/original/NOTICE.md). The desktopPet code is MIT.
+Every classic pack, original or generated, is livened up at load time by
+[`src/main/tune.ts`](src/main/tune.ts) (faster tempo and stride, tuned transition weights).
+`npm run fetch-original` re-downloads the pack.
 
 ## How it works
 

@@ -1,7 +1,7 @@
 name: Package
 
 # Manual: builds installers with electron-builder on each OS and uploads them as artifacts.
-# Not run on every push. The original eSheep art is never present here (it is git-ignored).
+# Not run on every push.
 on:
   workflow_dispatch:
 

@@ -5,7 +5,6 @@ directories:
 files:
   - dist/**
   - assets/**
-  - '!assets/packs/original/**' # third-party art: never ship in installers
   - '!dist/demo/**'
   - '!dist/**/*.map'
   - package.json

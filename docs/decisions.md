@@ -94,3 +94,10 @@ The faster tempo and tuned weights live in `src/main/tune.ts` (pure, unit-tested
 the classic sequencing untouched, and the local-only `original` art gets the same liveliness.
 `npm run demo:original` (`build-demo.mjs --with-original`) adds the original art to a local demo
 build behind a `packs/index.json` listing; CI never passes the flag, so it cannot be published.
+
+## 14. The original eSheep art ships, and is the default
+
+The owner has confirmed they hold a licence for the original eSheep artwork, so it is committed
+(`assets/packs/original/`, with a NOTICE), bundled in installers, and the demo's default sheep. The
+generated `woolly` pack stays as an MIT-licensed alternative. This reverses the earlier "local-only"
+stance (ADR 11 and 13); the `--with-original` build flag and `demo:original` script are gone.
