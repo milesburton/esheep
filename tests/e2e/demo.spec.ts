@@ -286,3 +286,35 @@ test('grabbing one sheep leaves the others alone', async ({ page }) => {
   expect(Math.abs(other.x - b.x)).toBeLessThan(400);
   await page.mouse.up();
 });
+
+test('the Size picker scales the sheep and keeps the flock', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => window.__demo.add());
+  const canvas = page.locator('#sheep');
+  await expect(canvas).toHaveCSS('width', '52px'); // 40px sprite + 6px margin each side
+  await page.locator('#scale').selectOption('3');
+  await expect.poll(() => page.evaluate(() => window.__demo.count())).toBe(2);
+  await expect(canvas).toHaveCSS('width', '132px'); // 40 x 3 + 12
+  await page.evaluate(() => window.__demo.step(6000));
+  const s = await snap(page);
+  expect(s.y + 120).toBeLessThanOrEqual((await monitor(page)).bottom + 1); // 120px sprite fits on the floor
+});
+
+test('the canvas is rendered at device resolution so pixel art stays crisp', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ deviceScaleFactor: 2 });
+  const page = await context.newPage();
+  await open(page);
+  const dims = await page.locator('#sheep').evaluate((c: HTMLCanvasElement) => ({
+    backing: c.width,
+    css: c.getBoundingClientRect().width,
+  }));
+  expect(dims).toEqual({ backing: 104, css: 52 }); // 52 CSS px at 2 device px each
+  // Still hit-testable at the right place: clicking the sheep's centre picks it up.
+  await page.evaluate(() => window.__demo.step(8000));
+  const s = await snap(page);
+  await page.mouse.move(s.x + 20, s.y + 22);
+  await expect(page.locator('#sheep')).toHaveCSS('pointer-events', 'auto');
+  await context.close();
+});

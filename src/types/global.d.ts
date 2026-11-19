@@ -5,6 +5,7 @@ interface Prefs {
   sound: boolean;
   pack: string; // 'builtin' or a folder name under assets/packs
   count: number; // how many sheep, 1 - 12
+  scale: number; // sprite size multiplier, 1 - 4 (whole numbers are crispest)
 }
 
 interface Rect {

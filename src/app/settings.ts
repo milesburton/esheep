@@ -2,6 +2,7 @@ export {};
 (() => {
   const speed = document.getElementById('speed') as HTMLInputElement;
   const speedOut = document.getElementById('speedOut') as HTMLOutputElement;
+  const scale = document.getElementById('scale') as HTMLSelectElement;
   const count = document.getElementById('count') as HTMLInputElement;
   const sound = document.getElementById('sound') as HTMLInputElement;
   const pack = document.getElementById('pack') as HTMLSelectElement;
@@ -20,6 +21,7 @@ export {};
       speedOut.textContent = p.speed.toFixed(1);
       sound.checked = p.sound;
       count.value = String(p.count);
+      scale.value = String(p.scale);
     },
   );
 
@@ -30,6 +32,7 @@ export {};
       sound: sound.checked,
       pack: pack.value,
       count: Number(count.value),
+      scale: Number(scale.value),
     });
     status.textContent = 'Saved';
   });

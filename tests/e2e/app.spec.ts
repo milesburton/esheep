@@ -176,11 +176,33 @@ test.describe('settings', () => {
     });
 
     page.evaluate(() =>
-      window.electronAPI.savePrefs({ speed: 99, sound: false, pack: '../../etc', count: 99 }),
+      window.electronAPI.savePrefs({
+        speed: 99,
+        sound: false,
+        pack: '../../etc',
+        count: 99,
+        scale: 99,
+      }),
     );
     await expect
       .poll(() => page.evaluate(() => window.electronAPI.loadPrefs()))
-      .toMatchObject({ speed: 2, sound: false, pack: 'builtin', count: 12 });
+      .toMatchObject({ speed: 2, sound: false, pack: 'builtin', count: 12, scale: 4 });
+  });
+
+  test('the Size setting scales the sprite and its window, and persists', async () => {
+    const page = await openSettings();
+    await page.locator('#pack').selectOption('woolly');
+    await page.locator('#scale').selectOption('2');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await expect(page.locator('#status')).toHaveText('Saved');
+    expect(await page.evaluate(() => window.electronAPI.loadPrefs())).toMatchObject({ scale: 2 });
+    // 40px sprite x2, plus the 6px margin on every side.
+    await expect.poll(async () => (await sheepBounds()).width, { timeout: 15_000 }).toBe(92);
+    const bottom = await page.evaluate(async () => {
+      const [primary] = await window.electronAPI.getWorkAreas();
+      return primary.y + primary.height;
+    });
+    await expect.poll(async () => (await sheepBounds()).y + 86, { timeout: 15_000 }).toBe(bottom);
   });
 
   test('switching to the woolly pack reloads the sheep, which falls in and lands on the taskbar line', async () => {

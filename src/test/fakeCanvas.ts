@@ -9,6 +9,7 @@ export const fakeCtx = (alpha = 255) => {
     restore: vi.fn(),
     translate: vi.fn(),
     scale: vi.fn(),
+    setTransform: vi.fn(),
     drawImage: vi.fn(),
     getImageData: vi.fn(() => ({ data: [0, 0, 0, alpha] })),
   };

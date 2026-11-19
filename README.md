@@ -61,6 +61,10 @@ windows and an optional second monitor. Grab the sheep, fling it, and watch it l
   pixels to DIPs, so high-DPI and mixed-DPI desktops line up. macOS asks for the Accessibility
   permission (without it, or on Linux, the sheep uses screen edges only).
 - **Sprite packs**: two bundled, plus any desktopPet/eSheep-format `animations.xml`.
+- **High resolution**: the canvas is rendered at the display's physical resolution with smoothing off,
+  so the pixel art stays crisp on retina and 4K screens (and follows a window between monitors of
+  different density). A **Size** setting draws the sheep ×1 to ×4 (whole numbers look best); speed
+  scales with it.
 - **A flock**: run 1 to 12 sheep at once (one transparent window each). Add and remove them from the
   tray or Settings, or with the demo's Add sheep button.
 - **Sheep meet**: a sheep that walks into another at the same level stops to greet it (the pack's
@@ -99,7 +103,7 @@ The Electron end-to-end tests need a display. On a headless Linux box run them u
 - **Grab**: press on the sheep and hold. It dangles. Move to carry it.
 - **Drop**: release while the pointer is still, and it falls under gravity.
 - **Toss**: release mid-flick. Throw speed is capped at 3,200 px/s.
-- **Settings**: speed (0.5 to 2×), sound, which sprite pack to use, and how many sheep.
+- **Settings**: speed (0.5 to 2×), sound, which sprite pack to use, size (×1 to ×4) and how many sheep.
 
 > **Linux:** grabbing is unavailable because Electron cannot forward mouse-move events through a
 > click-through window there. The sheep still wanders; it just cannot be picked up. The browser demo

@@ -32,7 +32,8 @@ const getVisibleWindows = createWindowSource(process.platform, process.pid, load
 );
 
 const MAX_SHEEP = 12;
-const DEFAULT_PREFS: Prefs = { speed: 1, sound: false, pack: BUILTIN, count: 1 };
+const MAX_SCALE = 4;
+const DEFAULT_PREFS: Prefs = { speed: 1, sound: false, pack: BUILTIN, count: 1, scale: 1 };
 const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, n));
 
 const store = new Store<Prefs>({ defaults: DEFAULT_PREFS });
@@ -50,6 +51,7 @@ const loadPrefs = (): Prefs => ({
   sound: store.get('sound'),
   pack: store.get('pack'),
   count: store.get('count'),
+  scale: store.get('scale'),
 });
 
 const createSheepWindow = (): void => {
@@ -180,8 +182,10 @@ ipcMain.on('save-prefs', (_e, prefs: Prefs) => {
     sound: Boolean(prefs.sound),
     pack: packs.includes(prefs.pack) ? prefs.pack : BUILTIN,
     count: clamp(Math.round(Number(prefs.count)) || 1, 1, MAX_SHEEP),
+    scale: clamp(Math.round(Number(prefs.scale)) || 1, 1, MAX_SCALE),
   };
-  const packChanged = clean.pack !== store.get('pack');
+  // A new pack or size needs the sheep rebuilt, which a renderer reload does.
+  const packChanged = clean.pack !== store.get('pack') || clean.scale !== store.get('scale');
   store.set(clean);
   if (packChanged)
     for (const w of sheepWins) w.webContents.reload(); // renderers reload the new pack on start

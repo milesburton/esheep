@@ -28,7 +28,9 @@ export const WINDOW = 128;
 /** Transparent margin around a classic sprite, so tossed pixels are never clipped at the edge. */
 export const PAD = 6;
 /** Classic packs: on-screen px per source px. */
-export const SCALE = 1; // native pixels: the classic art is 40 px and looks wrong blown up
+/** Default sprite size multiplier: native pixels (the classic art is 40 px). */
+export const SCALE = 1;
+export const MAX_SCALE = 4;
 
 export interface StageOptions {
   readonly pack: Pack;
@@ -42,6 +44,10 @@ export interface StageOptions {
   /** Move the host window / element so the canvas origin is at (x, y) in screen px. */
   readonly place: (x: number, y: number) => void;
   readonly onSound?: () => void;
+  /** Classic sprites are drawn this many times their native size (whole numbers look crispest). */
+  readonly scale?: number;
+  /** Device pixels per CSS pixel: the canvas is rendered at this resolution so it stays crisp. */
+  readonly pixelRatio?: number;
   /** Sprite rectangles of the other sheep, so this one can leap over them. */
   readonly getOthers?: () => readonly Rect[];
 }
@@ -55,6 +61,8 @@ export interface Snapshot {
 }
 
 export interface Stage {
+  /** The display's device pixel ratio changed (e.g. the window moved to another monitor). */
+  setPixelRatio(ratio: number): void;
   /** Side of the square window the sheep draws into (sprite plus a small margin). */
   windowSize(): number;
   /** Advance by `dtMs` of (unscaled) wall time, redraw and reposition. */
@@ -96,7 +104,8 @@ const classicBrain = (o: StageOptions, pack: ClassicPack): Brain => {
   const cp: CompiledPack = compilePack(pack);
   const tw = o.sheetSize.width / pack.tilesX;
   const th = o.sheetSize.height / pack.tilesY;
-  const cfg: Config = { size: Math.round(tw * SCALE), scale: SCALE };
+  const scale = Math.min(MAX_SCALE, Math.max(1, o.scale ?? SCALE));
+  const cfg: Config = { size: Math.round(tw * scale), scale };
   const pad = PAD;
   const win = cfg.size + 2 * PAD;
   const first = spawn(cp, o.getWorld(), cfg, o.seed);
@@ -202,14 +211,22 @@ export const createStage = (o: StageOptions): Stage => {
     const p = brain.pos();
     o.place(Math.round(p.x - brain.pad), Math.round(p.y - brain.pad));
   };
-  // Size the canvas to the sheep (resizing resets the context, so smoothing is switched off after).
+  // The canvas is rendered at device resolution (CSS size stays the window size) so pixel art is
+  // crisp on high-DPI displays; everything is drawn in CSS px under a scale transform.
   const canvas = o.ctx.canvas as HTMLCanvasElement | undefined;
-  if (canvas) {
-    canvas.width = brain.win;
-    canvas.height = brain.win;
+  let ratio = Math.max(1, o.pixelRatio ?? 1);
+  const sizeCanvas = (): void => {
+    if (!canvas) return;
+    canvas.width = Math.round(brain.win * ratio); // resizing resets the context, hence the redraw
+    canvas.height = Math.round(brain.win * ratio);
     o.ctx.imageSmoothingEnabled = false;
-  }
-  brain.draw(o.ctx);
+  };
+  const paint = (): void => {
+    o.ctx.setTransform?.(ratio, 0, 0, ratio, 0, 0);
+    brain.draw(o.ctx);
+  };
+  sizeCanvas();
+  paint();
   place();
 
   return {
@@ -217,10 +234,18 @@ export const createStage = (o: StageOptions): Stage => {
     tick: (dtMs) => {
       if (paused) return;
       if (brain.step(dtMs, o.getWorld(), o.getPrefs())) o.onSound?.();
-      brain.draw(o.ctx);
+      paint();
       place();
     },
-    hit: (x, y) => o.ctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data[3] > 16,
+    hit: (x, y) =>
+      o.ctx.getImageData(Math.floor(x * ratio), Math.floor(y * ratio), 1, 1).data[3] > 16,
+    setPixelRatio: (r) => {
+      const next = Math.max(1, r);
+      if (next === ratio) return;
+      ratio = next;
+      sizeCanvas();
+      paint();
+    },
     down: (pointer, t) => {
       if (paused) return;
       drag = startDrag(brain.pos(), pointer, t);
@@ -231,7 +256,7 @@ export const createStage = (o: StageOptions): Stage => {
       const m = moveDrag(drag, pointer, t);
       drag = m.drag;
       brain.moveHeld(m.sprite);
-      brain.draw(o.ctx);
+      paint();
       place();
     },
     up: (t) => {
@@ -247,7 +272,7 @@ export const createStage = (o: StageOptions): Stage => {
     play: (name) => {
       if (!brain.play || !brain.animations?.().includes(name)) return false;
       brain.play(name, o.getWorld());
-      brain.draw(o.ctx);
+      paint();
       place();
       return true;
     },

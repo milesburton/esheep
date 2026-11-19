@@ -57,6 +57,7 @@ let focus: Sheep | null = null;
 let wanted = 1;
 let paused = false;
 const prefs = { speed: 1, sound: false };
+let scale = Math.min(4, Math.max(1, Number(params.get('scale')) || 1));
 
 const loadPack = async (
   name: string,
@@ -132,7 +133,10 @@ const refreshStatus = (): void => {
   document.body.dataset.mode = s.mode;
 };
 const tickAll = (dt: number): void => {
-  for (const s of flock) s.stage.tick(dt);
+  for (const s of flock) {
+    s.stage.setPixelRatio(window.devicePixelRatio);
+    s.stage.tick(dt);
+  }
   refreshStatus();
 };
 
@@ -166,6 +170,8 @@ const addSheep = (): void => {
     sheetSize: loaded.size,
     ctx: cx,
     seed: (seed + index * 7919) >>> 0,
+    scale,
+    pixelRatio: window.devicePixelRatio,
     getWorld: world,
     getPrefs: () => prefs,
     getOthers: () =>
@@ -272,6 +278,12 @@ $('pause').addEventListener('click', (e) => {
   paused = !paused;
   for (const s of flock) s.stage.setPaused(paused);
   (e.target as HTMLElement).textContent = paused ? 'Resume' : 'Pause';
+});
+const scaleSelect = $<HTMLSelectElement>('scale');
+scaleSelect.value = String(scale);
+scaleSelect.addEventListener('change', () => {
+  scale = Number(scaleSelect.value);
+  void start($<HTMLSelectElement>('pack').value);
 });
 $('add').addEventListener('click', () => {
   if (flock.length >= MAX_SHEEP) return;

@@ -46,6 +46,8 @@ const run = async (): Promise<void> => {
     // Several sheep start in the same millisecond, so mix in real randomness.
     seed: crypto.getRandomValues(new Uint32Array(1))[0],
     getWorld: () => ({ areas, windows }),
+    scale: prefs.scale,
+    pixelRatio: window.devicePixelRatio,
     getPrefs: () => prefs,
     getOthers: () => others,
     place: (x, y) => api.moveWindow(x, y),
@@ -106,6 +108,7 @@ const run = async (): Promise<void> => {
 
   let last = performance.now();
   const frame = (now: number): void => {
+    created.setPixelRatio(window.devicePixelRatio); // follows the window between mixed-DPI displays
     created.tick(Math.min(now - last, 100));
     last = now;
     requestAnimationFrame(frame);

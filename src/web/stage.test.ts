@@ -96,6 +96,43 @@ describe('classic stage', () => {
     expect(make(bounce).stage.windowSize()).toBe(128);
   });
 
+  it('draws classic sprites at the requested whole-number scale (clamped to 1-4)', () => {
+    const base = make(woolly).stage.rect()?.width ?? 0;
+    const at = (scale: number) => make(woolly, { scale }).stage;
+    expect(at(2).rect()?.width).toBe(base * 2);
+    expect(at(2).windowSize()).toBe(base * 2 + 2 * PAD);
+    expect(at(9).rect()?.width).toBe(base * 4);
+    expect(at(0).rect()?.width).toBe(base);
+  });
+
+  it('renders the canvas at device resolution and maps hit-tests to it', () => {
+    const canvas = { width: 0, height: 0 } as HTMLCanvasElement;
+    const ctx = Object.assign(fakeCtx(), { canvas }) as unknown as CanvasRenderingContext2D;
+    const { stage } = make(woolly, { ctx, pixelRatio: 2 });
+    const css = stage.windowSize();
+    expect(canvas).toMatchObject({ width: css * 2, height: css * 2 });
+    expect(ctx.setTransform).toHaveBeenLastCalledWith(2, 0, 0, 2, 0, 0);
+    stage.hit(10.5, 7);
+    expect(ctx.getImageData).toHaveBeenLastCalledWith(21, 14, 1, 1);
+  });
+
+  it('re-renders at the new resolution when the pixel ratio changes, and ignores no-ops', () => {
+    const canvas = { width: 0, height: 0 } as HTMLCanvasElement;
+    const ctx = Object.assign(fakeCtx(), { canvas }) as unknown as CanvasRenderingContext2D;
+    const { stage } = make(woolly, { ctx });
+    const css = stage.windowSize();
+    stage.setPixelRatio(3);
+    expect(canvas.width).toBe(css * 3);
+    expect(ctx.setTransform).toHaveBeenLastCalledWith(3, 0, 0, 3, 0, 0);
+    const calls = (ctx.setTransform as unknown as { mock: { calls: unknown[] } }).mock.calls.length;
+    stage.setPixelRatio(3);
+    expect((ctx.setTransform as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(
+      calls,
+    );
+    stage.setPixelRatio(0.5); // never below 1
+    expect(canvas.width).toBe(css);
+  });
+
   it('has no rectangle for the bounce sheep', () => {
     expect(make(bounce).stage.rect()).toBeNull();
   });

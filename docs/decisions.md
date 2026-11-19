@@ -136,3 +136,15 @@ and reports `windowSize()`, and the renderer asks the main process to resize the
 (`set-window-size`, lifting `resizable` around the call because Linux ignores `setSize` otherwise).
 The bounce sheep keeps its fixed 128 px square. Windows start at 52 px, so the usual case needs no
 resize. Other sheep's rectangles are derived from their window bounds, centred.
+
+## 18. High resolution: device-resolution canvas and a Size setting
+
+The canvas used to be one backing pixel per CSS pixel, so on a display with a device pixel ratio of
+2 or more the browser upscaled it with smoothing and the pixel art went soft. The stage now renders
+into a canvas of `windowSize x pixelRatio` pixels (CSS size unchanged), draws under a
+`setTransform(ratio)` with smoothing off, and maps hit-tests through the ratio. The renderer and demo
+check `devicePixelRatio` every frame, so a window dragged to a monitor of a different density
+re-renders at the right resolution (`setPixelRatio`). A `scale` preference (1 to 4, default 1) sets the
+engine's `Config.scale`, which already multiplies both the sprite size and the walking strides, so a
+bigger sheep also moves proportionally. Changing it, like changing pack, reloads the sheep windows.
+The art itself is still the 40 px sheet; a higher-resolution sheet would need new artwork.
