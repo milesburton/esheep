@@ -123,20 +123,20 @@ test.describe('tray menu and pause', () => {
 
   test('offers Pause, Settings and Quit', async () => {
     await sheepPage();
-    expect(await labels()).toEqual(['Pause', 'Settings…', 'Quit']);
+    expect(await labels()).toEqual(['Pause', 'Add sheep', 'Remove sheep', 'Settings…', 'Quit']);
   });
 
   test('Pause freezes the sheep and Resume releases it', async () => {
     await sheepPage();
     await toggle();
-    expect(await labels()).toEqual(['Resume', 'Settings…', 'Quit']);
+    expect(await labels()).toEqual(['Resume', 'Add sheep', 'Remove sheep', 'Settings…', 'Quit']);
     await new Promise((r) => setTimeout(r, 300)); // let the pause message land
     const frozen = await sheepBounds();
     await new Promise((r) => setTimeout(r, 600));
     expect(await sheepBounds()).toEqual(frozen);
 
     await toggle();
-    expect(await labels()).toEqual(['Pause', 'Settings…', 'Quit']);
+    expect(await labels()).toEqual(['Pause', 'Add sheep', 'Remove sheep', 'Settings…', 'Quit']);
     await expect.poll(async () => (await sheepBounds()).x, { timeout: 5000 }).not.toBe(frozen.x);
   });
 });
@@ -176,11 +176,11 @@ test.describe('settings', () => {
     });
 
     page.evaluate(() =>
-      window.electronAPI.savePrefs({ speed: 99, sound: false, pack: '../../etc' }),
+      window.electronAPI.savePrefs({ speed: 99, sound: false, pack: '../../etc', count: 99 }),
     );
     await expect
       .poll(() => page.evaluate(() => window.electronAPI.loadPrefs()))
-      .toMatchObject({ speed: 2, sound: false, pack: 'builtin' });
+      .toMatchObject({ speed: 2, sound: false, pack: 'builtin', count: 12 });
   });
 
   test('switching to the woolly pack reloads the sheep, which falls in and lands on the taskbar line', async () => {
@@ -193,6 +193,77 @@ test.describe('settings', () => {
     });
     // Classic sheep stands on the bottom of the work area (40px sprite centred in the 128px window: 44px pad above and below).
     await expect.poll(async () => (await sheepBounds()).y + 84, { timeout: 15_000 }).toBe(bottom);
+  });
+});
+
+test.describe('several sheep', () => {
+  type Seam = {
+    addSheep(): void;
+    removeSheep(): void;
+    sheepCount(): number;
+    trayLabels(): string[];
+  };
+  const seam = <T>(fn: (s: Seam) => T): Promise<T> =>
+    app.evaluate(
+      (_e, src) =>
+        new Function('s', `return (${src})(s)`)(
+          (globalThis as unknown as { __esheep: Seam }).__esheep,
+        ) as unknown,
+      fn.toString(),
+    ) as Promise<T>;
+  const sheepWindows = (): Promise<number> =>
+    app.evaluate(
+      ({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().filter((w) =>
+          w.webContents.getURL().endsWith('/app/index.html'),
+        ).length,
+    );
+
+  test('the tray can add and remove sheep, one window each, never below one', async () => {
+    await sheepPage();
+    expect(await seam((s) => s.trayLabels())).toEqual(
+      expect.arrayContaining(['Add sheep', 'Remove sheep']),
+    );
+    await seam((s) => s.addSheep());
+    await seam((s) => s.addSheep());
+    expect(await seam((s) => s.sheepCount())).toBe(3);
+    await expect.poll(sheepWindows).toBe(3);
+    await seam((s) => s.removeSheep());
+    await seam((s) => s.removeSheep());
+    await seam((s) => s.removeSheep());
+    expect(await seam((s) => s.sheepCount())).toBe(1);
+    await expect.poll(sheepWindows).toBe(1);
+  });
+
+  test('the Sheep setting opens that many windows, and every one runs its own sheep', async () => {
+    const opened = app.waitForEvent('window', {
+      predicate: (w) => w.url().endsWith('/settings.html'),
+    });
+    await app.evaluate(() =>
+      (globalThis as unknown as { __esheep: { openSettings(): void } }).__esheep.openSettings(),
+    );
+    const page = await opened;
+    await page.waitForLoadState('domcontentloaded');
+    await page.locator('#count').fill('3');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await expect(page.locator('#status')).toHaveText('Saved');
+    await expect.poll(sheepWindows).toBe(3);
+    expect(await page.evaluate(() => window.electronAPI.loadPrefs())).toMatchObject({ count: 3 });
+    // Each window has its own renderer, so each sheep ends up somewhere different.
+    await expect
+      .poll(
+        () =>
+          app.evaluate(
+            ({ BrowserWindow }) =>
+              new Set(
+                BrowserWindow.getAllWindows()
+                  .filter((w) => w.webContents.getURL().endsWith('/app/index.html'))
+                  .map((w) => w.getBounds().x),
+              ).size,
+          ),
+        { timeout: 15_000 },
+      )
+      .toBeGreaterThan(1);
   });
 });
 

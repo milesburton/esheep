@@ -11,9 +11,6 @@ const seed = Number(params.get('seed') ?? Date.now()) >>> 0;
 
 const canvas = $<HTMLCanvasElement>('sheep');
 const desk = $('desk');
-const ctx = canvas.getContext('2d', { willReadFrequently: true });
-if (!ctx) throw new Error('2D canvas unavailable');
-ctx.imageSmoothingEnabled = false;
 
 const rectOf = (el: Element): Rect => {
   const r = el.getBoundingClientRect();
@@ -46,7 +43,16 @@ const world = (): World => {
   };
 };
 
-let stage: Stage | null = null;
+/** One sheep: its own canvas and its own stage (state, drag, drawing). */
+interface Sheep {
+  readonly stage: Stage;
+  readonly canvas: HTMLCanvasElement;
+}
+const MAX_SHEEP = 12;
+const flock: Sheep[] = [];
+/** The sheep the status line and the Animation picker follow: the one last added or grabbed. */
+let focus: Sheep | null = null;
+let wanted = 1;
 let paused = false;
 const prefs = { speed: 1, sound: false };
 
@@ -91,71 +97,130 @@ const fillAnimations = (names: readonly string[]): void => {
   animSelect.disabled = names.length === 0;
 };
 animSelect.addEventListener('change', () => {
-  if (animSelect.value) stage?.play(animSelect.value);
+  if (animSelect.value) focus?.stage.play(animSelect.value);
   animSelect.value = '';
   refreshStatus();
 });
 
-/** Bumped on every start so a slow earlier load can't overwrite a newer choice. */
-let generation = 0;
+interface Loaded {
+  pack: Pack;
+  sheet: CanvasImageSource;
+  size: { width: number; height: number };
+}
+let loaded: Loaded | null = null;
 
-const start = async (name: string): Promise<void> => {
-  const mine = ++generation;
-  const { pack, sheet, size } = await loadPack(name);
-  if (mine !== generation) return;
-  stage = createStage({
-    pack,
-    sheet,
-    sheetSize: size,
-    ctx,
-    seed,
-    getWorld: world,
-    getPrefs: () => prefs,
-    place: (x, y) => {
-      canvas.style.transform = `translate(${x}px, ${y}px)`;
-    },
-    onSound: () => beep(),
-  });
-  stage.setPaused(paused);
-  fillAnimations(stage.animations());
-  tickOnce(0);
+const canvasFor = (index: number): HTMLCanvasElement => {
+  if (index === 0) return canvas;
+  const c = document.createElement('canvas');
+  c.id = `sheep-${index + 1}`;
+  c.className = 'sheep';
+  c.width = 128;
+  c.height = 128;
+  document.body.append(c);
+  return c;
 };
 
 const status = $('status');
 const refreshStatus = (): void => {
-  const s: Snapshot | undefined = stage?.snapshot();
+  $('count').textContent = String(flock.length);
+  const s: Snapshot | undefined = focus?.stage.snapshot();
   if (!s) return;
   status.textContent = `${s.animation} · ${s.mode}`;
   document.body.dataset.animation = s.animation;
   document.body.dataset.mode = s.mode;
 };
-const tickOnce = (dt: number): void => {
-  stage?.tick(dt);
+const tickAll = (dt: number): void => {
+  for (const s of flock) s.stage.tick(dt);
   refreshStatus();
 };
 
-// Pointer: the canvas only captures events over the sheep's own pixels.
+const attachPointer = (sheep: Sheep): void => {
+  sheep.canvas.addEventListener('pointerdown', (e) => {
+    sheep.canvas.setPointerCapture(e.pointerId);
+    focus = sheep;
+    fillAnimations(sheep.stage.animations());
+    sheep.stage.down({ x: e.clientX, y: e.clientY }, e.timeStamp);
+    refreshStatus();
+  });
+  const end = (e: PointerEvent): void => {
+    sheep.stage.up(e.timeStamp);
+    refreshStatus();
+  };
+  sheep.canvas.addEventListener('pointerup', end);
+  sheep.canvas.addEventListener('pointercancel', end);
+};
+
+const addSheep = (): void => {
+  if (!loaded || flock.length >= MAX_SHEEP) return;
+  const index = flock.length;
+  const c = canvasFor(index);
+  const cx = c.getContext('2d', { willReadFrequently: true });
+  if (!cx) throw new Error('2D canvas unavailable');
+  cx.imageSmoothingEnabled = false;
+  const stage = createStage({
+    pack: loaded.pack,
+    sheet: loaded.sheet,
+    sheetSize: loaded.size,
+    ctx: cx,
+    seed: (seed + index * 7919) >>> 0,
+    getWorld: world,
+    getPrefs: () => prefs,
+    place: (x, y) => {
+      c.style.transform = `translate(${x}px, ${y}px)`;
+    },
+    onSound: () => beep(),
+  });
+  stage.setPaused(paused);
+  const sheep: Sheep = { stage, canvas: c };
+  attachPointer(sheep);
+  flock.push(sheep);
+  focus = sheep;
+  fillAnimations(stage.animations());
+  stage.tick(0);
+};
+
+const removeSheep = (): void => {
+  if (flock.length <= 1) return;
+  const gone = flock.pop();
+  gone?.canvas.remove();
+  if (focus === gone) focus = flock[flock.length - 1] ?? null;
+  refreshStatus();
+};
+
+/** Bumped on every start so a slow earlier load can't overwrite a newer choice. */
+let generation = 0;
+
+/** (Re)build the whole flock from the chosen pack, keeping the current number of sheep. */
+const start = async (name: string): Promise<void> => {
+  const mine = ++generation;
+  const next = await loadPack(name);
+  if (mine !== generation) return;
+  loaded = next;
+  while (flock.length > 0) {
+    const gone = flock.pop();
+    if (gone && gone.canvas !== canvas) gone.canvas.remove();
+  }
+  for (let i = 0; i < wanted; i++) addSheep();
+  focus = flock[0] ?? null;
+  if (focus) fillAnimations(focus.stage.animations());
+  refreshStatus();
+};
+
+// Pointer: each canvas only captures events over its own sheep's pixels.
 document.addEventListener('pointermove', (e) => {
-  if (!stage) return;
-  if (stage.dragging()) {
-    stage.move({ x: e.clientX, y: e.clientY }, e.timeStamp);
+  const dragging = flock.find((s) => s.stage.dragging());
+  if (dragging) {
+    dragging.stage.move({ x: e.clientX, y: e.clientY }, e.timeStamp);
     refreshStatus();
     return;
   }
-  const r = canvas.getBoundingClientRect();
-  canvas.style.pointerEvents = stage.hit(e.clientX - r.left, e.clientY - r.top) ? 'auto' : 'none';
+  for (const s of flock) {
+    const r = s.canvas.getBoundingClientRect();
+    s.canvas.style.pointerEvents = s.stage.hit(e.clientX - r.left, e.clientY - r.top)
+      ? 'auto'
+      : 'none';
+  }
 });
-canvas.addEventListener('pointerdown', (e) => {
-  canvas.setPointerCapture(e.pointerId);
-  stage?.down({ x: e.clientX, y: e.clientY }, e.timeStamp);
-  refreshStatus();
-});
-const end = (e: PointerEvent): void => {
-  stage?.up(e.timeStamp);
-  refreshStatus();
-};
-canvas.addEventListener('pointerup', end);
-canvas.addEventListener('pointercancel', end);
 
 // Draggable fake windows.
 const placeWindow = (el: HTMLElement, x: number, y: number): void => {
@@ -194,8 +259,18 @@ $<HTMLInputElement>('dual').addEventListener('change', (e) => {
 });
 $('pause').addEventListener('click', (e) => {
   paused = !paused;
-  stage?.setPaused(paused);
+  for (const s of flock) s.stage.setPaused(paused);
   (e.target as HTMLElement).textContent = paused ? 'Resume' : 'Pause';
+});
+$('add').addEventListener('click', () => {
+  if (flock.length >= MAX_SHEEP) return;
+  wanted = flock.length + 1;
+  addSheep();
+  refreshStatus();
+});
+$('remove').addEventListener('click', () => {
+  removeSheep();
+  wanted = flock.length;
 });
 $('reset').addEventListener('click', () => initial.forEach((p, w) => placeWindow(w, p.x, p.y)));
 
@@ -204,7 +279,7 @@ void start('woolly').then(() => {
   if (manual) return;
   let last = performance.now();
   const frame = (now: number): void => {
-    tickOnce(Math.min(now - last, 100));
+    tickAll(Math.min(now - last, 100));
     last = now;
     requestAnimationFrame(frame);
   };
@@ -215,9 +290,16 @@ void start('woolly').then(() => {
 Object.assign(window, {
   __demo: {
     step: (ms: number, frameMs = 16): void => {
-      for (let t = 0; t < ms; t += frameMs) tickOnce(Math.min(frameMs, ms - t));
+      for (let t = 0; t < ms; t += frameMs) tickAll(Math.min(frameMs, ms - t));
     },
-    snapshot: (): Snapshot | undefined => stage?.snapshot(),
-    ready: (): boolean => stage !== null,
+    /** The first sheep (the only one unless more were added). */
+    snapshot: (): Snapshot | undefined => flock[0]?.stage.snapshot(),
+    snapshots: (): Snapshot[] => flock.map((s) => s.stage.snapshot()),
+    add: (): void => {
+      wanted = Math.min(MAX_SHEEP, flock.length + 1);
+      addSheep();
+    },
+    count: (): number => flock.length,
+    ready: (): boolean => flock.length > 0,
   },
 });

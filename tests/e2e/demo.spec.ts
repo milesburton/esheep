@@ -232,3 +232,47 @@ test('every classic animation can be played from the picker, including turning',
   await page.locator('#pack').selectOption('bounce');
   await expect(picker).toBeDisabled();
 });
+
+test('more sheep can be added and removed, each with its own state', async ({ page }) => {
+  await open(page);
+  await expect(page.locator('#count')).toHaveText('1');
+  await page.getByRole('button', { name: 'Add sheep' }).click();
+  await page.getByRole('button', { name: 'Add sheep' }).click();
+  await expect(page.locator('#count')).toHaveText('3');
+  await expect(page.locator('canvas.sheep')).toHaveCount(3);
+  await page.evaluate(() => window.__demo.step(6000));
+  const all = await page.evaluate(() => window.__demo.snapshots());
+  expect(all).toHaveLength(3);
+  expect(new Set(all.map((s) => Math.round(s.x))).size).toBeGreaterThan(1); // not clones
+  await page.getByRole('button', { name: 'Remove' }).click();
+  await expect(page.locator('canvas.sheep')).toHaveCount(2);
+  // Removing never takes the last sheep.
+  await page.getByRole('button', { name: 'Remove' }).click();
+  await page.getByRole('button', { name: 'Remove' }).click();
+  await expect(page.locator('canvas.sheep')).toHaveCount(1);
+});
+
+test('switching pack keeps the number of sheep', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => window.__demo.add());
+  await page.locator('#pack').selectOption('bounce');
+  await expect.poll(() => page.evaluate(() => window.__demo.count())).toBe(2);
+  await page.locator('#pack').selectOption('woolly');
+  await expect.poll(() => page.evaluate(() => window.__demo.count())).toBe(2);
+});
+
+test('grabbing one sheep leaves the others alone', async ({ page }) => {
+  await open(page);
+  await hideWindows(page);
+  await page.evaluate(() => window.__demo.add());
+  await page.evaluate(() => window.__demo.step(8000));
+  const [a, b] = await page.evaluate(() => window.__demo.snapshots());
+  await page.mouse.move(a.x + 20, a.y + 22);
+  await page.mouse.down();
+  await page.mouse.move(a.x + 220, a.y - 100, { steps: 4 });
+  const [held, other] = await page.evaluate(() => window.__demo.snapshots());
+  expect(held.mode).toBe('held');
+  expect(other.mode).not.toBe('held');
+  expect(Math.abs(other.x - b.x)).toBeLessThan(400);
+  await page.mouse.up();
+});

@@ -4,6 +4,7 @@ interface Prefs {
   speed: number; // multiplier, 0.5 - 2.0
   sound: boolean;
   pack: string; // 'builtin' or a folder name under assets/packs
+  count: number; // how many sheep, 1 - 12
 }
 
 interface Rect {

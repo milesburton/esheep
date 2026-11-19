@@ -74,3 +74,15 @@ falling, tossing and more. Sequencing (timings, transitions, spawns) follows the
 desktopPet format and is recorded in `scripts/classic/structure.json` with frames named by pose,
 so no original artwork is involved. The demo has an Animation picker to trigger any of them.
 `npm run assets` regenerates the sheet; the original eSheep art remains local-only.
+
+## 12. Faster, livelier, and a flock
+
+The generated pack runs at a faster tempo (every interval halved; the walking strides tripled, as
+the classic walk is only ~10 px/s) and its transition weights are tuned so climbing, ceiling walks,
+grazing, flowers, boing and dozing turn up in minutes rather than hours (`scripts/classic/pack.mjs`).
+The engine treats the end of a window as an edge, so `look_down`, `jump_down` and the window-fall
+animations play instead of the sheep silently dropping off.
+
+Several sheep: the demo keeps one canvas and `Stage` per sheep; the Electron app opens one
+transparent window per sheep (renderers are independent, IPC replies go to the sender's window),
+with `count` (1-12) in prefs, Add/Remove in the tray and a Sheep field in Settings.

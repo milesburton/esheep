@@ -339,13 +339,27 @@ describe('gravity and landing', () => {
     expect(state.y).toBe(300 - CFG.size);
   });
 
-  it('drops through to the next floor if it walks off the end of a window', () => {
-    const cp = compiled();
+  it('drops to the next floor if it walks off the end of a window and the pack has no edge response', () => {
+    const base = miniPack();
+    const cp = compilePack({
+      ...base,
+      animations: base.animations.map((a) => (a.id === 1 ? { ...a, border: [] } : a)),
+    });
     const w = world({ windows: [{ x: 300, y: 300, width: 200, height: 200 }] });
     const onTop = standing(cp, { x: 400, y: 300 - CFG.size });
     const { state, started } = run(cp, onTop, w, 6000);
     expect(started).toContain('fall');
     expect(state.y).toBe(FLOOR_Y);
+  });
+
+  it('treats the end of a window as an edge: it turns round and stays on top', () => {
+    const cp = compiled();
+    const w = world({ windows: [{ x: 300, y: 300, width: 200, height: 200 }] });
+    const onTop = standing(cp, { x: 400, y: 300 - CFG.size });
+    const { state, started } = run(cp, onTop, w, 6000);
+    expect(started).toContain('turn');
+    expect(started).not.toContain('fall');
+    expect(state.y).toBe(300 - CFG.size);
   });
 });
 

@@ -41,7 +41,8 @@ const run = async (): Promise<void> => {
     sheet,
     sheetSize,
     ctx,
-    seed: Date.now() >>> 0,
+    // Several sheep start in the same millisecond, so mix in real randomness.
+    seed: crypto.getRandomValues(new Uint32Array(1))[0],
     getWorld: () => ({ areas, windows }),
     getPrefs: () => prefs,
     place: (x, y) => api.moveWindow(x, y),

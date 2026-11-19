@@ -8,5 +8,12 @@ interface DemoSnap {
 }
 
 interface Window {
-  __demo: { step(ms: number): void; snapshot(): DemoSnap; ready(): boolean };
+  __demo: {
+    step(ms: number): void;
+    snapshot(): DemoSnap;
+    snapshots(): DemoSnap[];
+    add(): void;
+    count(): number;
+    ready(): boolean;
+  };
 }

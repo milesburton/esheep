@@ -12,7 +12,8 @@ const loadNative = (): WindowManagerLike =>
   require('node-window-manager').windowManager;
 const getVisibleWindows = createWindowSource(process.platform, process.pid, loadNative);
 
-const DEFAULT_PREFS: Prefs = { speed: 1, sound: false, pack: BUILTIN };
+const MAX_SHEEP = 12;
+const DEFAULT_PREFS: Prefs = { speed: 1, sound: false, pack: BUILTIN, count: 1 };
 const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, n));
 
 const store = new Store<Prefs>({ defaults: DEFAULT_PREFS });
@@ -20,7 +21,7 @@ const preload = path.join(__dirname, '..', 'preload', 'preload.js');
 const page = (name: string): string => path.join(__dirname, '..', 'web', 'app', name);
 const asset = (name: string): string => path.join(__dirname, '..', '..', 'assets', name);
 
-let sheepWin: BrowserWindow | null = null;
+const sheepWins: BrowserWindow[] = [];
 let settingsWin: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let paused = false;
@@ -29,11 +30,12 @@ const loadPrefs = (): Prefs => ({
   speed: store.get('speed'),
   sound: store.get('sound'),
   pack: store.get('pack'),
+  count: store.get('count'),
 });
 
 const createSheepWindow = (): void => {
   const area = screen.getPrimaryDisplay().workArea;
-  sheepWin = new BrowserWindow({
+  const win = new BrowserWindow({
     width: SIZE,
     height: SIZE,
     x: area.x + Math.round(area.width / 2),
@@ -47,13 +49,28 @@ const createSheepWindow = (): void => {
     resizable: false,
     webPreferences: { preload, contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
-  sheepWin.setAlwaysOnTop(true, 'screen-saver');
+  win.setAlwaysOnTop(true, 'screen-saver');
   // Click-through; the renderer turns it off while the pointer is over the sheep (grab / toss).
-  sheepWin.setIgnoreMouseEvents(true, { forward: true });
-  void sheepWin.loadFile(page('index.html'));
-  sheepWin.on('closed', () => {
-    sheepWin = null;
+  win.setIgnoreMouseEvents(true, { forward: true });
+  void win.loadFile(page('index.html'));
+  win.on('closed', () => {
+    const i = sheepWins.indexOf(win);
+    if (i >= 0) sheepWins.splice(i, 1);
   });
+  sheepWins.push(win);
+};
+
+/** Open or close sheep windows until there are `n` of them. */
+const setSheepCount = (n: number): void => {
+  const target = clamp(Math.round(n) || 1, 1, MAX_SHEEP);
+  while (sheepWins.length < target) createSheepWindow();
+  while (sheepWins.length > target) sheepWins.pop()?.destroy();
+  if (store.get('count') !== target) store.set('count', target);
+  tray?.setContextMenu(buildTrayMenu());
+};
+
+const broadcast = (channel: string, ...args: unknown[]): void => {
+  for (const w of sheepWins) if (!w.isDestroyed()) w.webContents.send(channel, ...args);
 };
 
 const openSettings = (): void => {
@@ -77,13 +94,23 @@ const openSettings = (): void => {
 
 const togglePause = (): void => {
   paused = !paused;
-  sheepWin?.webContents.send(paused ? 'pause' : 'resume');
+  broadcast(paused ? 'pause' : 'resume');
   tray?.setContextMenu(buildTrayMenu());
 };
 
 function buildTrayMenu(): Menu {
   return Menu.buildFromTemplate([
     { label: paused ? 'Resume' : 'Pause', click: togglePause },
+    {
+      label: 'Add sheep',
+      enabled: sheepWins.length < MAX_SHEEP,
+      click: () => setSheepCount(sheepWins.length + 1),
+    },
+    {
+      label: 'Remove sheep',
+      enabled: sheepWins.length > 1,
+      click: () => setSheepCount(sheepWins.length - 1),
+    },
     { label: 'Settings…', click: openSettings },
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() },
@@ -108,11 +135,12 @@ ipcMain.handle('load-prefs', () => loadPrefs());
 ipcMain.handle('is-paused', () => paused);
 ipcMain.handle('list-packs', () => listPacks(asset('')));
 ipcMain.handle('load-pack', () => loadPack(asset(''), store.get('pack')));
-ipcMain.on('set-click-through', (_e, ignore: boolean) => {
-  sheepWin?.setIgnoreMouseEvents(Boolean(ignore), { forward: true });
+ipcMain.on('set-click-through', (e, ignore: boolean) => {
+  BrowserWindow.fromWebContents(e.sender)?.setIgnoreMouseEvents(Boolean(ignore), { forward: true });
 });
-ipcMain.on('move-window', (_e, x: number, y: number) => {
-  if (Number.isFinite(x) && Number.isFinite(y)) sheepWin?.setPosition(Math.round(x), Math.round(y));
+ipcMain.on('move-window', (e, x: number, y: number) => {
+  if (Number.isFinite(x) && Number.isFinite(y))
+    BrowserWindow.fromWebContents(e.sender)?.setPosition(Math.round(x), Math.round(y));
 });
 ipcMain.on('save-prefs', (_e, prefs: Prefs) => {
   const packs = listPacks(asset(''));
@@ -120,12 +148,14 @@ ipcMain.on('save-prefs', (_e, prefs: Prefs) => {
     speed: clamp(Number(prefs.speed) || 1, 0.5, 2),
     sound: Boolean(prefs.sound),
     pack: packs.includes(prefs.pack) ? prefs.pack : BUILTIN,
+    count: clamp(Math.round(Number(prefs.count)) || 1, 1, MAX_SHEEP),
   };
   const packChanged = clean.pack !== store.get('pack');
   store.set(clean);
   if (packChanged)
-    sheepWin?.webContents.reload(); // renderer reloads the new pack on start
-  else sheepWin?.webContents.send('prefs-changed', clean);
+    for (const w of sheepWins) w.webContents.reload(); // renderers reload the new pack on start
+  else broadcast('prefs-changed', clean);
+  setSheepCount(clean.count);
 });
 
 // Test seam: lets Playwright drive the tray menu without a real tray. Off in production.
@@ -139,6 +169,9 @@ if (process.env.ESHEEP_TEST === '1') {
           .items.map((i) => i.label)
           .filter(Boolean),
       isPaused: () => paused,
+      sheepCount: () => sheepWins.length,
+      addSheep: () => setSheepCount(sheepWins.length + 1),
+      removeSheep: () => setSheepCount(sheepWins.length - 1),
     },
   });
 }
@@ -149,8 +182,8 @@ if (!app.requestSingleInstanceLock()) {
   // Transparent windows on Linux need this and fail without a compositor.
   if (process.platform === 'linux') app.disableHardwareAcceleration();
   void app.whenReady().then(() => {
-    createSheepWindow();
     createTray();
+    setSheepCount(store.get('count'));
     enableAutoLaunch();
   });
   // Tray app: don't quit when the settings window closes.

@@ -525,6 +525,7 @@ export const update = (
     if (s.acc < interval) break;
 
     const dir = s.flipped ? -1 : 1;
+    const before = s;
     const base: SheepState = {
       ...s,
       acc: s.acc - interval,
@@ -542,6 +543,21 @@ export const update = (
           cfg,
         );
     s = moved.state;
+
+    // Stepping off the end of a window counts as reaching its edge: turn back, look down, hop off.
+    if (!before.hop && !moved.hit && flagsOf(before, world, cfg).window && s.y === before.y) {
+      const after = flagsOf(s, world, cfg);
+      if (!after.window && !after.taskbar) {
+        const back = { ...s, x: before.x };
+        const c = choose(s.anim.border, flagsOf(back, world, cfg), s.rng);
+        s = { ...s, rng: c.rng };
+        if (c.id !== null) {
+          s = { ...s, x: before.x };
+          restart(c.id, 1);
+          continue;
+        }
+      }
+    }
 
     const flags = flagsOf(s, world, cfg);
     if (moved.hit) {
