@@ -54,7 +54,7 @@ jobs:
             README.md
             docs/screenshots
             docs/badges
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         with:
           path: dist/demo
@@ -96,7 +96,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   readme:
     # Commits the regenerated README, screenshots and badges. [skip ci] stops it re-triggering CI.
