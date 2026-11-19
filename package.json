@@ -1,0 +1,67 @@
+{
+  "name": "esheep",
+  "version": "0.1.0",
+  "description": "A modern e-Sheep desktop pet",
+  "main": "dist/main/main.js",
+  "author": "Miles Burton",
+  "license": "MIT",
+  "scripts": {
+    "dev": "npm run build:ts && electron .",
+    "build:ts": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json && node scripts/copy-static.mjs",
+    "build": "npm run build:ts && electron-builder --publish never",
+    "build:demo": "npm run build:ts && node scripts/build-demo.mjs",
+    "demo": "npm run build:demo && node scripts/serve.mjs dist/demo 4173",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "lint:md": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"#dist\" \"#coverage\" \"#reports\" \"#playwright-report\" \"#test-results\"",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:app": "playwright test --project=electron",
+    "assets": "node scripts/make-assets.mjs",
+    "fetch-original": "node scripts/fetch-original.mjs",
+    "sim": "npm run build:ts && node scripts/sim-engine.mjs",
+    "readme": "node scripts/update-readme.mts",
+    "audit": "npm audit --audit-level=high",
+    "prepare": "[ -n \"$CI\" ] || git config core.hooksPath .husky"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "fast-xml-parser": "^4.5.7"
+  },
+  "optionalDependencies": {
+    "node-window-manager": "^2.2.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^22.20.5",
+    "@vitest/coverage-v8": "^5.1.1",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "eslint": "^10.15.0",
+    "eslint-config-prettier": "^10.1.8",
+    "fallow": "^3.43.2",
+    "markdownlint-cli2": "^0.23.3",
+    "prettier": "^3.10.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.73.0",
+    "vitest": "^5.1.1"
+  },
+  "allowScripts": {
+    "electron@28.3.3": true,
+    "node-window-manager@2.2.4": true,
+    "extract-file-icon@0.3.2": true
+  },
+  "type": "commonjs",
+  "private": true,
+  "overrides": {
+    "markdown-it": "15.0.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/milesburton/esheep.git"
+  }
+}

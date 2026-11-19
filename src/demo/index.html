@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>eSheep demo</title>
+    <meta
+      name="description"
+      content="A desktop sheep you can grab and toss. Runs entirely in your browser."
+    />
+    <style>
+      :root {
+        --bg: #14181f;
+        --panel: #1d232d;
+        --text: #e6e9ef;
+        --muted: #98a2b3;
+        --accent: #7cc4ff;
+        --screen: #243044;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+        overflow: hidden;
+        user-select: none;
+      }
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        align-items: center;
+        padding: 8px 12px;
+        background: var(--panel);
+        border-bottom: 1px solid #2b3442;
+      }
+      header h1 {
+        font-size: 15px;
+        margin: 0;
+      }
+      header label {
+        color: var(--muted);
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
+      header select,
+      header button {
+        background: #2a3342;
+        color: var(--text);
+        border: 1px solid #3a4558;
+        border-radius: 6px;
+        padding: 3px 8px;
+        font: inherit;
+      }
+      header a {
+        color: var(--accent);
+        margin-left: auto;
+      }
+      #status {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+      #desk {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        gap: 0; /* real displays are contiguous: a gap would be dead space */
+        padding: 12px;
+      }
+      .monitor {
+        position: relative;
+        flex: 1;
+        background: var(--screen);
+        border-radius: 0;
+        box-shadow: inset 0 0 0 1px #34425a;
+      }
+      .monitor .tag {
+        position: absolute;
+        right: 10px;
+        top: 8px;
+        color: #52627f;
+        font-size: 12px;
+      }
+      .win {
+        position: fixed;
+        width: 240px;
+        height: 150px;
+        background: #f2f4f8;
+        color: #1d232d;
+        border-radius: 6px;
+        box-shadow: 0 6px 24px rgb(0 0 0 / 0.45);
+        overflow: hidden;
+        touch-action: none;
+      }
+      .win .bar {
+        background: #c9d2e0;
+        padding: 4px 8px;
+        cursor: grab;
+        font-weight: 600;
+        user-select: none;
+      }
+      .win .body {
+        padding: 8px;
+        color: #55607a;
+      }
+      #sheep {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 128px;
+        height: 128px;
+        z-index: 10;
+        pointer-events: none;
+        touch-action: none;
+      }
+      #hint {
+        margin: 0;
+        padding: 6px 12px 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>eSheep demo</h1>
+      <label
+        >Sheep
+        <select id="pack">
+          <option value="woolly">Woolly (walks, falls, sleeps)</option>
+          <option value="bounce">Bounce (screensaver)</option>
+        </select>
+      </label>
+      <label>Speed <input id="speed" type="range" min="0.5" max="2" step="0.1" value="1" /></label>
+      <label><input id="dual" type="checkbox" /> Two monitors</label>
+      <button id="pause" type="button">Pause</button>
+      <button id="reset" type="button">Reset windows</button>
+      <span id="status" aria-live="off"></span>
+      <a href="https://github.com/milesburton/esheep">GitHub</a>
+    </header>
+    <p id="hint">Grab the sheep and toss it. Drag the windows to make obstacles.</p>
+    <main id="desk"></main>
+    <div class="win" data-win="1" style="left: 180px; top: 200px">
+      <div class="bar">Editor</div>
+      <div class="body">Drag me around.</div>
+    </div>
+    <div class="win" data-win="2" style="left: 520px; top: 330px">
+      <div class="bar">Terminal</div>
+      <div class="body">The sheep walks on top of windows.</div>
+    </div>
+    <canvas id="sheep" width="128" height="128"></canvas>
+    <script type="module" src="demo.js"></script>
+  </body>
+</html>

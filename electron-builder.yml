@@ -1,0 +1,24 @@
+appId: io.github.milesburton.esheep
+productName: eSheep
+directories:
+  output: release
+files:
+  - dist/**
+  - assets/**
+  - '!assets/packs/original/**' # third-party art: never ship in installers
+  - '!dist/demo/**'
+  - '!dist/**/*.map'
+  - package.json
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+mac:
+  target: dmg
+  category: public.app-category.entertainment
+  extendInfo:
+    NSAppleEventsUsageDescription: eSheep needs access to see other windows.
+linux:
+  target: AppImage
+  category: Utility

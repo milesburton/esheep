@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run lint:md
+      - run: npm run test:coverage
+      - run: npm run build:demo
+      - run: npm audit --audit-level=high
+      # Advisory: some exports are only used by the app/demo shells.
+      - run: npx fallow dead-code
+        continue-on-error: true
+      - name: End-to-end tests (browser demo and the real Electron app under Xvfb)
+        run: xvfb-run -a -s "-screen 0 1280x1024x24" npx playwright test --project=demo --project=electron
+      - name: Verify the working tree is clean
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Working tree is dirty after the build:"; git status --short; exit 1
+          fi
+      - name: Regenerate README screenshots and metrics
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          PW_REPORT=reports/playwright-screenshots.json xvfb-run -a -s "-screen 0 1280x1024x24" npx playwright test --project=screenshots
+          npm run readme
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        with:
+          name: readme-assets
+          path: |
+            README.md
+            docs/screenshots
+            docs/badges
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        with:
+          path: dist/demo
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results
+          path: |
+            test-results
+            reports
+          if-no-files-found: ignore
+
+  secrets:
+    # Dependabot PRs get a read-only token that gitleaks cannot use; pushes to main still scan everything.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    needs: [check, secrets]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  readme:
+    # Commits the regenerated README, screenshots and badges. [skip ci] stops it re-triggering CI.
+    needs: [check, secrets]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: readme-assets
+          path: .
+      - name: Commit if anything changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md docs/screenshots docs/badges
+          if git diff --cached --quiet; then
+            echo "README assets already up to date"
+          else
+            git commit -m "docs: refresh README metrics and screenshots [skip ci]"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi

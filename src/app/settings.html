@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <title>eSheep settings</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 16px;
+      }
+      label {
+        display: block;
+        margin: 12px 0;
+      }
+      button {
+        margin-top: 8px;
+        padding: 4px 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="form">
+      <label>
+        Speed: <output id="speedOut">1.0</output>×
+        <input id="speed" type="range" min="0.5" max="2" step="0.1" value="1" />
+      </label>
+      <label
+        >Sprite pack:
+        <select id="pack"></select
+      ></label>
+      <label><input id="sound" type="checkbox" /> Sound on bounce</label>
+      <button type="submit">Save</button>
+      <span id="status"></span>
+    </form>
+    <script type="module" src="settings.js"></script>
+  </body>
+</html>
