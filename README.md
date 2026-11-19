@@ -9,12 +9,12 @@ TypeScript, with a functional, fully tested core that also powers a
 
 [![CI](https://github.com/milesburton/esheep/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-yellow.svg)](LICENSE)
-[![unit tests: 157/157 passing](https://img.shields.io/badge/unit_tests-157%2F157_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
+[![unit tests: 163/163 passing](https://img.shields.io/badge/unit_tests-163%2F163_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
 [![e2e tests: 28/28 passing](https://img.shields.io/badge/e2e_tests-28%2F28_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
 [![line coverage: 99.8%](https://img.shields.io/badge/line_coverage-99.8%25-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
 [![branch coverage: 97.2%](https://img.shields.io/badge/branch_coverage-97.2%25-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
-![source: 2,064 lines TypeScript](https://img.shields.io/badge/source-2%2C064_lines_TypeScript-blue)
-[![demo size: 93 kB](https://img.shields.io/badge/demo_size-93_kB-blue)](https://milesburton.github.io/esheep/)
+![source: 2,161 lines TypeScript](https://img.shields.io/badge/source-2%2C161_lines_TypeScript-blue)
+[![demo size: 94 kB](https://img.shields.io/badge/demo_size-94_kB-blue)](https://milesburton.github.io/esheep/)
 
 <!-- metrics:end -->
 
