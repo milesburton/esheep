@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { parsePackXml } from '../main/pack.js';
 import { fakeCtx } from '../test/fakeCanvas.js';
 import { world } from '../test/fixtures.js';
-import { createStage, type StageOptions } from './stage.js';
+import { PAD, createStage, type StageOptions } from './stage.js';
 
 const woolly = parsePackXml(
   fs.readFileSync(
@@ -80,6 +80,20 @@ describe('classic stage', () => {
     const r = stage.rect();
     expect(r).toMatchObject({ x: stage.snapshot().x, y: stage.snapshot().y });
     expect(r?.width).toBe(r?.height);
+  });
+
+  it('sizes its window to the sprite plus a small margin, and the canvas to match', () => {
+    const canvas = { width: 0, height: 0 } as HTMLCanvasElement;
+    const ctx = Object.assign(fakeCtx(), { canvas }) as unknown as CanvasRenderingContext2D;
+    const { stage } = make(woolly, { ctx });
+    const r = stage.rect();
+    expect(stage.windowSize()).toBe((r?.width ?? 0) + 2 * PAD);
+    expect(canvas).toMatchObject({ width: stage.windowSize(), height: stage.windowSize() });
+    expect(ctx.imageSmoothingEnabled).toBe(false);
+  });
+
+  it('keeps the bounce sheep in its fixed 128px window', () => {
+    expect(make(bounce).stage.windowSize()).toBe(128);
   });
 
   it('has no rectangle for the bounce sheep', () => {

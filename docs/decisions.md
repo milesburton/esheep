@@ -125,3 +125,14 @@ rectangles; in the demo the flock shares rectangles directly.
   right on one monitor. We undo that (`physicalBounds`) and convert the physical rectangle with
   Electron's `screen.screenToDipRect`, which is correct per display on mixed-DPI desktops.
   None of macOS or DPI has been run on real hardware; the logic is unit-tested with fakes.
+
+## 17. Windows sized to the sprite
+
+Each sheep window used to be a fixed 128 px square around a 40 px sprite, which left the window
+hanging 44 px below the display when the sheep stood on the floor (a problem on platforms that clamp
+windows to the screen, such as macOS) and made twelve sheep twelve large transparent windows. A
+classic sheep's window is now the sprite plus a 6 px margin (`PAD`); the stage sizes its own canvas
+and reports `windowSize()`, and the renderer asks the main process to resize the window
+(`set-window-size`, lifting `resizable` around the call because Linux ignores `setSize` otherwise).
+The bounce sheep keeps its fixed 128 px square. Windows start at 52 px, so the usual case needs no
+resize. Other sheep's rectangles are derived from their window bounds, centred.

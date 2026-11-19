@@ -179,6 +179,8 @@ const addSheep = (): void => {
     onSound: () => beep(),
   });
   me = stage;
+  c.style.width = `${stage.windowSize()}px`;
+  c.style.height = `${stage.windowSize()}px`;
   stage.setPaused(paused);
   const sheep: Sheep = { stage, canvas: c };
   attachPointer(sheep);

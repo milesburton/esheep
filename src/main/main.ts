@@ -5,7 +5,8 @@ import { enableAutoLaunch } from './autolaunch';
 import { BUILTIN, listPacks, loadPack } from './pack';
 import { createWindowSource, type NativeWindow, type WindowManagerLike } from './windows';
 
-const SIZE = 128;
+// Windows start small (a classic sprite plus margin) and the renderer resizes them to fit.
+const SIZE = 52;
 // The native module is optional (Windows and macOS), so it is required lazily and may fail to load.
 const loadNative = (): WindowManagerLike => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -162,6 +163,15 @@ ipcMain.on('set-click-through', (e, ignore: boolean) => {
 ipcMain.on('move-window', (e, x: number, y: number) => {
   if (Number.isFinite(x) && Number.isFinite(y))
     BrowserWindow.fromWebContents(e.sender)?.setPosition(Math.round(x), Math.round(y));
+});
+ipcMain.on('set-window-size', (e, size: number) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const n = Math.round(clamp(Number(size) || SIZE, 16, 512));
+  if (!win || win.getBounds().width === n) return;
+  // Linux ignores setSize on non-resizable windows, so lift the restriction around the call.
+  win.setResizable(true);
+  win.setSize(n, n);
+  win.setResizable(false);
 });
 ipcMain.on('save-prefs', (_e, prefs: Prefs) => {
   const packs = listPacks(asset(''));

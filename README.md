@@ -49,7 +49,8 @@ windows and an optional second monitor. Grab the sheep, fling it, and watch it l
 
 ## Features
 
-- Transparent, always-on-top, click-through window (128 × 128 px) that only catches the mouse over the
+- Transparent, always-on-top, click-through window, one per sheep and sized to it (52 × 52 px for the 40 px classic sprite), that
+  only catches the mouse over the
   sheep's own pixels.
 - **Grab and toss**: pick the sheep up, drop it, or flick it. A throw uses your pointer's recent
   velocity, then the sheep tumbles, bounces off walls, windows and floors, and lands (harder throws

@@ -82,6 +82,8 @@ interface ElectronAPI {
   /** Work areas of all displays, primary first. */
   getWorkAreas: () => Promise<Rect[]>;
   moveWindow: (x: number, y: number) => void;
+  /** Resize this sheep's window to fit its sprite. */
+  setWindowSize: (size: number) => void;
   /** Ignore mouse events (click-through) except while the pointer is over the sheep. */
   setClickThrough: (ignore: boolean) => void;
   savePrefs: (prefs: Prefs) => void;

@@ -47,22 +47,20 @@ test.afterEach(async () => {
 test.describe('sheep window', () => {
   test('is a small, transparent, always-on-top, click-through window', async () => {
     await sheepPage();
-    const info = await app.evaluate(({ BrowserWindow }) => {
-      const w = BrowserWindow.getAllWindows()[0];
-      return {
-        ...w.getBounds(),
-        onTop: w.isAlwaysOnTop(),
-        focusable: w.isFocusable(),
-        resizable: w.isResizable(),
-      };
-    });
-    expect(info).toMatchObject({
-      width: 128,
-      height: 128,
-      onTop: true,
-      focusable: false,
-      resizable: false,
-    });
+    const info = (): Promise<Electron.Rectangle & Record<string, unknown>> =>
+      app.evaluate(({ BrowserWindow }) => {
+        const w = BrowserWindow.getAllWindows()[0];
+        return {
+          ...w.getBounds(),
+          onTop: w.isAlwaysOnTop(),
+          focusable: w.isFocusable(),
+          resizable: w.isResizable(),
+        };
+      });
+    // The default pack is the bounce sheep, which has a fixed 128px window (the renderer sizes it).
+    await expect
+      .poll(info)
+      .toMatchObject({ width: 128, height: 128, onTop: true, focusable: false, resizable: false });
   });
 
   test('exposes a narrow API and no Node to the renderer', async () => {
@@ -88,6 +86,7 @@ test.describe('sheep window', () => {
         'onPrefsChanged',
         'onResume',
         'savePrefs',
+        'setWindowSize',
         'setClickThrough',
       ].sort(),
     );
@@ -192,8 +191,10 @@ test.describe('settings', () => {
       const [primary] = await window.electronAPI.getWorkAreas();
       return primary.y + primary.height;
     });
-    // Classic sheep stands on the bottom of the work area (40px sprite centred in the 128px window: 44px pad above and below).
-    await expect.poll(async () => (await sheepBounds()).y + 84, { timeout: 15_000 }).toBe(bottom);
+    // A classic sheep stands on the bottom of the work area. Its window is the 40px sprite plus a 6px
+    // margin on every side (52px), so the feet are 46px below the window's top.
+    await expect.poll(async () => (await sheepBounds()).y + 46, { timeout: 15_000 }).toBe(bottom);
+    expect(await sheepBounds()).toMatchObject({ width: 52, height: 52 });
   });
 });
 
@@ -243,8 +244,10 @@ test.describe('several sheep', () => {
     await expect
       .poll(async () => (await first.evaluate(() => window.electronAPI.getOtherSheep())).length)
       .toBe(1);
-    const [other] = await first.evaluate(() => window.electronAPI.getOtherSheep());
-    expect(other).toMatchObject({ width: 128, height: 128 });
+    // Both windows are the bounce sheep's fixed 128px square once their renderers have sized them.
+    await expect
+      .poll(async () => (await first.evaluate(() => window.electronAPI.getOtherSheep()))[0]?.width)
+      .toBe(128);
   });
 
   test('the Sheep setting opens that many windows, and every one runs its own sheep', async () => {

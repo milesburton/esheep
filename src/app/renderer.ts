@@ -55,6 +55,7 @@ const run = async (): Promise<void> => {
   api.onPrefsChanged((p) => {
     prefs = p;
   });
+  api.setWindowSize(created.windowSize());
   created.setPaused(live.paused);
   live.stage = created;
 
@@ -67,10 +68,9 @@ const run = async (): Promise<void> => {
   setInterval(async () => {
     const mine = live.stage?.rect();
     if (!mine) return;
-    const inset = (128 - mine.width) / 2;
     others = (await api.getOtherSheep()).map((b) => ({
-      x: b.x + inset,
-      y: b.y + inset,
+      x: b.x + (b.width - mine.width) / 2,
+      y: b.y + (b.height - mine.height) / 2,
       width: mine.width,
       height: mine.height,
     }));

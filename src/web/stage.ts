@@ -23,7 +23,10 @@ import {
 import { moveDrag, releaseVelocity, startDrag, type Drag, type Point } from '../core/pointer.js';
 
 /** Size of the transparent window / canvas the sheep is drawn into. */
+/** The bounce sheep's window is a fixed square. */
 export const WINDOW = 128;
+/** Transparent margin around a classic sprite, so tossed pixels are never clipped at the edge. */
+export const PAD = 6;
 /** Classic packs: on-screen px per source px. */
 export const SCALE = 1; // native pixels: the classic art is 40 px and looks wrong blown up
 
@@ -52,6 +55,8 @@ export interface Snapshot {
 }
 
 export interface Stage {
+  /** Side of the square window the sheep draws into (sprite plus a small margin). */
+  windowSize(): number;
   /** Advance by `dtMs` of (unscaled) wall time, redraw and reposition. */
   tick(dtMs: number): void;
   /** True if the canvas pixel at (x, y) is part of the sheep (used for click-through). */
@@ -83,6 +88,8 @@ interface Brain {
   play?(name: string, world: World): void;
   animations?(): string[];
   readonly pad: number;
+  /** Side of the square window / canvas this sheep draws into. */
+  readonly win: number;
 }
 
 const classicBrain = (o: StageOptions, pack: ClassicPack): Brain => {
@@ -90,12 +97,14 @@ const classicBrain = (o: StageOptions, pack: ClassicPack): Brain => {
   const tw = o.sheetSize.width / pack.tilesX;
   const th = o.sheetSize.height / pack.tilesY;
   const cfg: Config = { size: Math.round(tw * SCALE), scale: SCALE };
-  const pad = (WINDOW - cfg.size) / 2;
+  const pad = PAD;
+  const win = cfg.size + 2 * PAD;
   const first = spawn(cp, o.getWorld(), cfg, o.seed);
   let s: SheepState = first.state;
 
   return {
     pad,
+    win,
     pos: () => ({ x: s.x, y: s.y }),
     step: (dtMs, world, prefs) => {
       const others = o.getOthers?.() ?? [];
@@ -113,11 +122,11 @@ const classicBrain = (o: StageOptions, pack: ClassicPack): Brain => {
       s = release(cp, s, world, cfg, v.vx, v.vy).state;
     },
     draw: (ctx) => {
-      ctx.clearRect(0, 0, WINDOW, WINDOW);
+      ctx.clearRect(0, 0, win, win);
       ctx.save();
       ctx.globalAlpha = s.opacity;
       if (s.flipped) {
-        ctx.translate(WINDOW, 0);
+        ctx.translate(win, 0);
         ctx.scale(-1, 1);
       }
       ctx.drawImage(
@@ -150,6 +159,7 @@ const bounceBrain = (o: StageOptions): Brain => {
 
   return {
     pad: 0,
+    win: WINDOW,
     pos: () => ({ x: s.x, y: s.y }),
     step: (dtMs, world, prefs) => {
       const r = bounceUpdate(s, world, WINDOW, prefs.speed, Math.min(dtMs, 50) / 1000);
@@ -192,10 +202,18 @@ export const createStage = (o: StageOptions): Stage => {
     const p = brain.pos();
     o.place(Math.round(p.x - brain.pad), Math.round(p.y - brain.pad));
   };
+  // Size the canvas to the sheep (resizing resets the context, so smoothing is switched off after).
+  const canvas = o.ctx.canvas as HTMLCanvasElement | undefined;
+  if (canvas) {
+    canvas.width = brain.win;
+    canvas.height = brain.win;
+    o.ctx.imageSmoothingEnabled = false;
+  }
   brain.draw(o.ctx);
   place();
 
   return {
+    windowSize: () => brain.win,
     tick: (dtMs) => {
       if (paused) return;
       if (brain.step(dtMs, o.getWorld(), o.getPrefs())) o.onSound?.();
