@@ -7,6 +7,9 @@ updates:
       # v9+ is ESM-only; the Electron main process is CommonJS.
       - dependency-name: electron-store
         update-types: ['version-update:semver-major']
+      # Types should match the runtime (Electron / CI Node), not the newest Node.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
