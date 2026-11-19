@@ -7,6 +7,8 @@ files:
   - assets/**
   - '!dist/demo/**'
   - '!dist/**/*.map'
+  - '!dist/**/*.test.js'
+  - '!dist/test/**'
   - package.json
 win:
   target: nsis
