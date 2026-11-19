@@ -55,3 +55,13 @@ electron-builder 24's `tar`/`app-builder-lib` at high or critical severity, and 
 moved to Electron 45, electron-builder 26 and fast-xml-parser 5. The real-Electron Playwright suite
 passed unchanged, which is the point of having it. Install-script approvals in `package.json` are
 name-based so a dependency bump never silently skips the Electron binary download.
+
+## 10. Native-size sprites, and hopping onto windows
+
+Classic packs are drawn at native pixels (`SCALE = 1`). The original eSheep art is 40 px per tile;
+blowing it up to 2x looked wrong. The 64 px generated pack is centred in the 128 px window.
+
+The original pack never climbs windows (only #1 has a `windowSide` border, and `jump` is a hop on
+the spot), so the engine adds a `hop`: on meeting the side of a window it can reach, or while
+approaching a ledge above head height, a sheep plays `jump` and follows an arc onto the window top.
+Reach is capped at 16 sprite heights and the target must keep the sprite on a display.

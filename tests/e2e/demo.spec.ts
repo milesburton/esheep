@@ -24,7 +24,7 @@ const hideWindows = (page: Page): Promise<void> =>
 /** Pointer position over the middle of the sheep's body. */
 const body = async (page: Page): Promise<{ x: number; y: number }> => {
   const s = await snap(page);
-  return { x: s.x + 64, y: s.y + 70 };
+  return { x: s.x + 32, y: s.y + 38 };
 };
 
 test('loads cleanly: title, controls and a sheep, with no console errors', async ({ page }) => {
@@ -49,7 +49,7 @@ test('the woolly sheep falls in from above, lands on the floor and walks', async
   expect(first.y).toBeLessThan(0); // spawned above the screen
   await step(page, 6000);
   const later = await snap(page);
-  expect(later.y + 128).toBeCloseTo(floor, 0);
+  expect(later.y + 64).toBeCloseTo(floor, 0);
 });
 
 test('only redistributable art is served', async ({ page }) => {
@@ -74,8 +74,8 @@ test('grab picks the sheep up and it follows the pointer', async ({ page }) => {
 
   await page.mouse.move(p.x + 200, p.y - 150, { steps: 4 });
   const held = await snap(page);
-  expect(held.x).toBeCloseTo(p.x + 200 - 64, 0);
-  expect(held.y).toBeCloseTo(p.y - 150 - 70, 0);
+  expect(held.x).toBeCloseTo(p.x + 200 - 32, 0);
+  expect(held.y).toBeCloseTo(p.y - 150 - 38, 0);
 
   await step(page, 2000); // gravity does not act on a held sheep
   expect(await snap(page)).toMatchObject({ x: held.x, y: held.y, mode: 'held' });
@@ -103,7 +103,7 @@ test('a flick tosses the sheep through the air and it lands and walks on', async
   await step(page, 8000);
   const landed = await snap(page);
   expect(landed.mode).toBe('walk');
-  expect(landed.y + 128).toBeCloseTo((await monitor(page)).bottom, 0);
+  expect(landed.y + 64).toBeCloseTo((await monitor(page)).bottom, 0);
 });
 
 test('releasing without a flick just drops the sheep', async ({ page }) => {
@@ -147,7 +147,7 @@ test('the sheep lands on top of a window dragged underneath it', async ({ page }
     return window.__demo.snapshot();
   });
   expect(landed.animation).toBe('land');
-  expect(landed.y + 128).toBeCloseTo(420, 0);
+  expect(landed.y + 64).toBeCloseTo(420, 0);
 });
 
 test('windows can be dragged by their title bar', async ({ page }) => {

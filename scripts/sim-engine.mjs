@@ -19,14 +19,17 @@ if (!fs.existsSync(xml)) {
 const pack = parsePackXml(fs.readFileSync(xml, 'utf8'), name);
 const cp = compilePack(pack);
 const tile = 64;
-const cfg = { size: tile * 2, scale: 2 };
+const cfg = { size: tile, scale: 1 };
 // Two side-by-side monitors plus a window floating on the left one.
 const world = {
   areas: [
     { x: 0, y: 0, width: 1920, height: 1040 },
     { x: 1920, y: 0, width: 1920, height: 1040 },
   ],
-  windows: [{ x: 300, y: 500, width: 600, height: 400 }],
+  windows: [
+    { x: 300, y: 500, width: 600, height: 520 },
+    { x: 1200, y: 300, width: 400, height: 200 },
+  ],
 };
 
 const seen = new Map();

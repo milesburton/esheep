@@ -19,7 +19,7 @@ test('grabbed', async ({ page }) => {
   await open(page);
   await step(page, 6000);
   const s = await page.evaluate(() => window.__demo.snapshot());
-  await page.mouse.move(s.x + 64, s.y + 70);
+  await page.mouse.move(s.x + 32, s.y + 38);
   await page.mouse.down();
   await page.mouse.move(s.x + 300, s.y - 200, { steps: 6 });
   await page.screenshot({ path: `${OUT}/demo-grab.png` });

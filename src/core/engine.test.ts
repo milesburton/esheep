@@ -264,6 +264,65 @@ describe('standing on a window near the top of the display', () => {
   });
 });
 
+describe('hopping onto a window', () => {
+  // Window reaching the floor: its top is 200px up, within hopping range for a 128px sprite.
+  const w = world({ windows: [{ x: 500, y: 300, width: 300, height: 300 }] });
+  const withJump = (): CompiledPack => {
+    const base = miniPack();
+    return compilePack({
+      ...base,
+      animations: [
+        ...base.animations,
+        anim({ id: 7, name: 'jump', frames: [8, 9, 10, 11], next: [next(1)] }),
+      ],
+    });
+  };
+  const atWall = (cp: CompiledPack, seed: number): SheepState => ({
+    ...spawn(cp, w, CFG, seed).state,
+    x: 500 - CFG.size,
+    y: FLOOR_Y,
+    flipped: true, // walking right, into the window
+    entered: true,
+  });
+
+  it('meets a climbable window side, jumps and ends up standing on its top', () => {
+    const cp = withJump();
+    const seeds = Array.from({ length: 30 }, (_, i) => i + 1);
+    const hopped = seeds
+      .map((seed) => run(cp, atWall(cp, seed), w, 3000))
+      .filter((r) => r.started.includes('jump'));
+    expect(hopped.length).toBeGreaterThan(3);
+    for (const r of hopped) {
+      expect(r.state.y).toBeCloseTo(300 - CFG.size, 0);
+      expect(r.state.x).toBeGreaterThanOrEqual(500 - 1);
+    }
+  });
+
+  it('spots a floating window ledge ahead while walking and hops up onto its top', () => {
+    const cp = withJump();
+    const ledge = world({ windows: [{ x: 500, y: 250, width: 300, height: 150 }] });
+    const walkingRight = (seed: number): SheepState => ({
+      ...atWall(cp, seed),
+      x: 500 - CFG.size - 70,
+      flipped: true,
+    });
+    const hopped = Array.from({ length: 30 }, (_, i) =>
+      run(cp, walkingRight(i + 1), ledge, 1200),
+    ).filter((r) => r.started.includes('jump'));
+    expect(hopped.length).toBeGreaterThan(2);
+    expect(hopped.some((r) => Math.abs(r.state.y - (250 - CFG.size)) < 1)).toBe(true);
+  });
+
+  it('does not hop when the window top is out of reach, or the pack has no jump', () => {
+    const tall = world({ windows: [{ x: 500, y: 10, width: 300, height: 590 }] });
+    const cp = withJump();
+    const s = { ...atWall(cp, 1), y: FLOOR_Y };
+    expect(run(cp, s, tall, 3000).started).not.toContain('jump');
+    const plain = compiled();
+    expect(run(plain, atWall(plain, 1), w, 3000).started).not.toContain('jump');
+  });
+});
+
 describe('gravity and landing', () => {
   it('falls when there is no floor, then lands on the display bottom and resumes walking', () => {
     const cp = compiled();

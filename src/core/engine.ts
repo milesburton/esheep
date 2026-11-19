@@ -60,6 +60,8 @@ export interface SheepState {
   readonly mode: Mode;
   readonly rng: number;
   readonly entered: boolean;
+  /** Set while the sheep is hopping from the floor up onto a window. */
+  readonly hop: Hop | null;
   // current animation playback
   readonly anim: PackAnim;
   readonly frames: readonly number[];
@@ -132,6 +134,7 @@ const placeholder = (anim: PackAnim, x: number, y: number, rng: number): SheepSt
   mode: { kind: 'walk' },
   rng,
   entered: false,
+  hop: null,
   anim,
   frames: anim.frames,
   repeatFrom: 0,
@@ -155,6 +158,7 @@ const begin = (cp: CompiledPack, s: SheepState, id: number, world: World, cfg: C
     started: [anim.name],
     state: {
       ...s,
+      hop: null,
       anim,
       animName: anim.name,
       frames,
@@ -216,6 +220,65 @@ export const spawn = (cp: CompiledPack, world: World, cfg: Config, seed: number)
   );
 };
 
+/** A hop from beside a window up onto its top edge. */
+interface Hop {
+  readonly x0: number;
+  readonly y0: number;
+  readonly x1: number;
+  readonly y1: number;
+}
+
+/** Highest window top (in sprite sizes) the sheep can hop up onto. */
+const MAX_HOP = 16;
+
+/** Chance of hopping (rather than turning round) on meeting a climbable window. */
+const HOP_CHANCE = 0.6;
+
+/** Per-tick chance that a walking sheep hops up onto a ledge it is approaching. */
+const LEDGE_CHANCE = 0.1;
+
+/** Where a sheep pressed against a window's side could hop to, or null if it cannot. */
+const hopTarget = (s: SheepState, world: World, cfg: Config): Hop | null => {
+  const S = cfg.size;
+  const feet = s.y + S;
+  const w = world.windows.find(
+    (r) =>
+      feet > r.y + TOL * 2 &&
+      s.y < r.y + r.height &&
+      (Math.abs(s.x + S - r.x) <= TOL || Math.abs(s.x - (r.x + r.width)) <= TOL),
+  );
+  if (!w || w.width < S * 1.5) return null;
+  const rise = feet - w.y;
+  const room = world.areas.some((a) => w.y - S >= a.y - S / 2 && w.x >= a.x - S);
+  if (rise > S * MAX_HOP || !room) return null;
+  const fromLeft = Math.abs(s.x + S - w.x) <= TOL;
+  return { x0: s.x, y0: s.y, x1: fromLeft ? w.x + S * 0.2 : w.x + w.width - S * 1.2, y1: w.y - S };
+};
+
+/** A window ledge just ahead (above head height) that a walking sheep could hop up onto. */
+const ledgeTarget = (s: SheepState, dir: number, world: World, cfg: Config): Hop | null => {
+  const S = cfg.size;
+  const feet = s.y + S;
+  const ahead = (w: Rect): number => (dir > 0 ? w.x - (s.x + S) : s.x - (w.x + w.width));
+  const w = world.windows.find(
+    (r) =>
+      r.y + r.height <= s.y &&
+      r.width >= S * 1.5 &&
+      ahead(r) >= -TOL &&
+      ahead(r) <= S * 0.6 &&
+      feet - r.y >= S * 0.5 &&
+      feet - r.y <= S * MAX_HOP &&
+      r.y - S >= world.areas.reduce((m, a) => Math.min(m, a.y), Infinity) - S / 2,
+  );
+  if (!w) return null;
+  return {
+    x0: s.x,
+    y0: s.y,
+    x1: dir > 0 ? w.x + S * 0.2 : w.x + w.width - S * 1.2,
+    y1: w.y - S,
+  };
+};
+
 const flagsOf = (s: SheepState, world: World, cfg: Config): Flags => {
   const feet = s.y + cfg.size;
   return {
@@ -231,12 +294,7 @@ const flagsOf = (s: SheepState, world: World, cfg: Config): Flags => {
       (!onScreenLower(world.areas, cfg.size, s.x - TOL, s.y) ||
         !onScreenLower(world.areas, cfg.size, s.x + TOL, s.y)),
     top: s.entered && !onScreen(world.areas, cfg.size, s.x, s.y - TOL),
-    windowSide: world.windows.some(
-      (w) =>
-        feet > w.y + TOL * 2 &&
-        s.y < w.y + w.height &&
-        (Math.abs(s.x + cfg.size - w.x) <= TOL || Math.abs(s.x - (w.x + w.width)) <= TOL),
-    ),
+    windowSide: hopTarget(s, world, cfg) !== null,
   };
 };
 
@@ -322,6 +380,22 @@ const move = (
   // "Entered" = lower body fully on a display (a spawn may start off to the side or above).
   const entered = s.entered || onScreenLower(world.areas, S, afterX.x, afterY.y);
   return { state: { ...s, x: afterX.x, y: afterY.y, entered }, hit: afterX.hit || afterY.hit };
+};
+
+/** Follow an arc from `hop`'s start to its end over the animation, landing exactly on the target. */
+const hopStep = (s: SheepState, hop: Hop, cfg: Config): { state: SheepState; hit: boolean } => {
+  const t = Math.min(1, (s.step + 1) / Math.max(1, s.total));
+  const arc = Math.sin(Math.PI * t) * cfg.size * 0.8;
+  const done = t >= 1;
+  return {
+    hit: false,
+    state: {
+      ...s,
+      x: done ? hop.x1 : lerp(hop.x0, hop.x1, t),
+      y: done ? hop.y1 : lerp(hop.y0, hop.y1, t) - arc,
+      hop: done ? null : s.hop,
+    },
+  };
 };
 
 /** Cycle the current animation's frames in place (used while held or thrown). */
@@ -451,27 +525,52 @@ export const update = (
     if (s.acc < interval) break;
 
     const dir = s.flipped ? -1 : 1;
-    const moved = move(
-      {
-        ...s,
-        acc: s.acc - interval,
-        frame: frameAt(s, s.step),
-        offsetY: lerp(s.p0.o, s.p1.o, t) * cfg.scale,
-        opacity: lerp(s.p0.a, s.p1.a, t),
-      },
-      lerp(s.p0.x, s.p1.x, t) * cfg.scale * dir,
-      lerp(s.p0.y, s.p1.y, t) * cfg.scale,
-      world,
-      cfg,
-    );
+    const base: SheepState = {
+      ...s,
+      acc: s.acc - interval,
+      frame: frameAt(s, s.step),
+      offsetY: lerp(s.p0.o, s.p1.o, t) * cfg.scale,
+      opacity: lerp(s.p0.a, s.p1.a, t),
+    };
+    const moved = s.hop
+      ? hopStep(base, s.hop, cfg)
+      : move(
+          base,
+          lerp(s.p0.x, s.p1.x, t) * cfg.scale * dir,
+          lerp(s.p0.y, s.p1.y, t) * cfg.scale,
+          world,
+          cfg,
+        );
     s = moved.state;
 
     const flags = flagsOf(s, world, cfg);
     if (moved.hit) {
+      // Pressed against a window we can climb: hop up onto it (most of the time).
+      const jump = cp.byName.get('jump');
+      const target = jump && !s.hop ? hopTarget(s, world, cfg) : null;
+      const [roll, rng] = nextRandom(s.rng);
+      s = { ...s, rng };
+      if (jump && target && roll < HOP_CHANCE) {
+        restart(jump.id, 1);
+        s = { ...s, hop: target };
+        continue;
+      }
       const c = choose(s.anim.border, flags, s.rng);
       s = { ...s, rng: c.rng };
       if (c.id !== null) {
         restart(c.id, 1);
+        continue;
+      }
+    }
+    const heading = Math.sign(s.p0.x * dir);
+    if (heading !== 0 && !s.hop && (flags.taskbar || flags.window)) {
+      const jump = cp.byName.get('jump');
+      const ledge = jump ? ledgeTarget(s, heading, world, cfg) : null;
+      const [roll, rng] = nextRandom(s.rng);
+      s = { ...s, rng };
+      if (jump && ledge && roll < LEDGE_CHANCE) {
+        restart(jump.id, 1);
+        s = { ...s, hop: ledge };
         continue;
       }
     }

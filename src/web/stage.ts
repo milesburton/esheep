@@ -23,7 +23,7 @@ import { moveDrag, releaseVelocity, startDrag, type Drag, type Point } from '../
 /** Size of the transparent window / canvas the sheep is drawn into. */
 export const WINDOW = 128;
 /** Classic packs: on-screen px per source px. */
-export const SCALE = 2;
+export const SCALE = 1; // native pixels: the classic art is 40 px and looks wrong blown up
 
 export interface StageOptions {
   readonly pack: Pack;
