@@ -226,6 +226,8 @@ interface Hop {
   readonly y0: number;
   readonly x1: number;
   readonly y1: number;
+  /** Peak height of the arc in px (default 0.8 sprite heights). */
+  readonly arc?: number;
 }
 
 /** Highest window top (in sprite sizes) the sheep can hop up onto. */
@@ -253,6 +255,37 @@ const hopTarget = (s: SheepState, world: World, cfg: Config): Hop | null => {
   if (rise > S * MAX_HOP || !room) return null;
   const fromLeft = Math.abs(s.x + S - w.x) <= TOL;
   return { x0: s.x, y0: s.y, x1: fromLeft ? w.x + S * 0.2 : w.x + w.width - S * 1.2, y1: w.y - S };
+};
+
+/** How far ahead (in sprite widths) another sheep triggers a leap, and the share of overlap tolerated. */
+const LEAP_REACH = 0.25;
+const LEAP_OVERLAP = 0.6;
+/** Chance per tick of leaping once another sheep is in the way. */
+const LEAP_CHANCE = 0.5;
+
+/** Another sheep in our path, at the same level: where a leap over it would land, or null. */
+const leapTarget = (s: SheepState, dir: number, world: World, cfg: Config): Hop | null => {
+  const S = cfg.size;
+  const feet = s.y + S;
+  const other = (world.others ?? []).find((o) => {
+    const gap = dir > 0 ? o.x - (s.x + S) : s.x - (o.x + o.width);
+    return (
+      gap <= S * LEAP_REACH &&
+      gap >= -S * LEAP_OVERLAP &&
+      Math.abs(o.y + o.height - feet) <= S * 0.4
+    );
+  });
+  if (!other) return null;
+  const x1 = dir > 0 ? other.x + other.width + S * 0.1 : other.x - S * 1.1;
+  const supported =
+    world.windows.some((w) => Math.abs(feet - w.y) <= TOL && overlapsX(S, x1, w)) ||
+    world.areas.some(
+      (a) =>
+        Math.abs(feet - (a.y + a.height)) <= TOL &&
+        overlapsX(S, x1, a) &&
+        onScreenLower(world.areas, S, x1, s.y),
+    );
+  return supported ? { x0: s.x, y0: s.y, x1, y1: s.y, arc: S * 1.3 } : null;
 };
 
 /** A window ledge just ahead (above head height) that a walking sheep could hop up onto. */
@@ -385,7 +418,7 @@ const move = (
 /** Follow an arc from `hop`'s start to its end over the animation, landing exactly on the target. */
 const hopStep = (s: SheepState, hop: Hop, cfg: Config): { state: SheepState; hit: boolean } => {
   const t = Math.min(1, (s.step + 1) / Math.max(1, s.total));
-  const arc = Math.sin(Math.PI * t) * cfg.size * 0.8;
+  const arc = Math.sin(Math.PI * t) * (hop.arc ?? cfg.size * 0.8);
   const done = t >= 1;
   return {
     hit: false,
@@ -581,6 +614,16 @@ export const update = (
     const heading = Math.sign(s.p0.x * dir);
     if (heading !== 0 && !s.hop && (flags.taskbar || flags.window)) {
       const jump = cp.byName.get('jump');
+      const leap = jump ? leapTarget(s, heading, world, cfg) : null;
+      if (jump && leap) {
+        const [pick, next] = nextRandom(s.rng);
+        s = { ...s, rng: next };
+        if (pick < LEAP_CHANCE) {
+          restart(jump.id, 1);
+          s = { ...s, hop: leap };
+          continue;
+        }
+      }
       const ledge = jump ? ledgeTarget(s, heading, world, cfg) : null;
       const [roll, rng] = nextRandom(s.rng);
       s = { ...s, rng };

@@ -324,6 +324,94 @@ describe('hopping onto a window', () => {
   });
 });
 
+describe('leaping over other sheep', () => {
+  const jumpPack = (): CompiledPack => {
+    const base = miniPack();
+    return compilePack({
+      ...base,
+      animations: [
+        ...base.animations,
+        anim({ id: 7, name: 'jump', frames: [8, 9, 10, 11], next: [next(1)] }),
+      ],
+    });
+  };
+  const at = (x: number, y = FLOOR_Y): Rect => ({ x, y, width: CFG.size, height: CFG.size });
+  // Facing right (the art faces left), so it walks right.
+  const walker = (cp: CompiledPack, seed: number, x = 200): SheepState => ({
+    ...spawn(cp, world(), CFG, seed).state,
+    x,
+    y: FLOOR_Y,
+    flipped: true,
+    entered: true,
+  });
+  const seeds = Array.from({ length: 12 }, (_, i) => i + 1);
+
+  it('jumps over a sheep in its path and lands on the far side, on the same floor', () => {
+    const cp = jumpPack();
+    const blocker = at(200 + CFG.size + 10);
+    const w = world({ others: [blocker] });
+    const hopped = seeds
+      .map((seed) => run(cp, walker(cp, seed), w, 1500))
+      .filter((r) => r.started.includes('jump'));
+    expect(hopped.length).toBeGreaterThan(3);
+    for (const r of hopped) {
+      expect(r.state.x).toBeGreaterThan(blocker.x + blocker.width - 1);
+      expect(r.state.y).toBe(FLOOR_Y);
+    }
+  });
+
+  it('leaps leftwards too', () => {
+    const cp = jumpPack();
+    const blocker = at(600);
+    const w = world({ others: [blocker] });
+    const left = (seed: number): SheepState => ({
+      ...walker(cp, seed, 600 + CFG.size + 10),
+      flipped: false,
+    });
+    const hopped = seeds
+      .map((seed) => run(cp, left(seed), w, 1500))
+      .filter((r) => r.started.includes('jump'));
+    expect(hopped.length).toBeGreaterThan(3);
+    for (const r of hopped) expect(r.state.x).toBeLessThan(blocker.x + 1);
+  });
+
+  it('does not leap over a sheep on a different level, behind it, or when the pack cannot jump', () => {
+    const cp = jumpPack();
+    const jumps = (w: World, c = cp, s = (n: number) => walker(c, n)): number =>
+      seeds.filter((n) => run(c, s(n), w, 600).started.includes('jump')).length;
+    expect(jumps(world({ others: [at(200 + CFG.size + 10, 100)] }))).toBe(0); // up in the air
+    expect(jumps(world({ others: [at(10)] }))).toBe(0); // behind it
+    const plain = compiled();
+    expect(jumps(world({ others: [at(200 + CFG.size + 10)] }), plain)).toBe(0);
+  });
+
+  it('does not leap to a landing spot with no floor under it', () => {
+    const cp = jumpPack();
+    // Blocker right at the display edge: the far side is off-screen.
+    const edge = at(1000 - CFG.size);
+    const w = world({ others: [edge] });
+    const s = (seed: number): SheepState => walker(cp, seed, 1000 - 2 * CFG.size - 5);
+    expect(seeds.filter((n) => run(cp, s(n), w, 400).started.includes('jump')).length).toBe(0);
+  });
+
+  it('two sheep walking at each other get past one another', () => {
+    const cp = jumpPack();
+    let a = walker(cp, 1, 100);
+    let b = { ...walker(cp, 2, 700), flipped: false };
+    let jumps = 0;
+    for (let t = 0; t < 12_000; t += 16) {
+      const ua = update(cp, a, world({ others: [sheepRect(b, CFG)] }), CFG, 16);
+      const ub = update(cp, b, world({ others: [sheepRect(a, CFG)] }), CFG, 16);
+      a = ua.state;
+      b = ub.state;
+      jumps += [...ua.started, ...ub.started].filter((n) => n === 'jump').length;
+      expect([a.x, a.y, b.x, b.y].every(Number.isFinite)).toBe(true);
+      expect(a.y).toBeLessThanOrEqual(FLOOR_Y + 0.5);
+    }
+    expect(jumps).toBeGreaterThan(0);
+  });
+});
+
 describe('gravity and landing', () => {
   it('falls when there is no floor, then lands on the display bottom and resumes walking', () => {
     const cp = compiled();

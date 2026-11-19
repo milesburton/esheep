@@ -60,6 +60,8 @@ windows and an optional second monitor. Grab the sheep, fling it, and watch it l
 - **Sprite packs**: two bundled, plus any desktopPet/eSheep-format `animations.xml`.
 - **A flock**: run 1 to 12 sheep at once (one transparent window each). Add and remove them from the
   tray or Settings, or with the demo's Add sheep button.
+- **Sheep leap over each other**: a sheep that walks into another at the same level jumps over it
+  and lands on the far side (in the app via shared window positions, in the demo directly).
 - Tray menu (Pause / Resume, Add / Remove sheep, Settings…, Quit), persisted preferences (speed,
   sound, pack, sheep count) and start-at-login.
 

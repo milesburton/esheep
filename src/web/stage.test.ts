@@ -72,6 +72,20 @@ describe('classic stage', () => {
     expect(stage.play('no such animation')).toBe(false);
   });
 
+  it('exposes the sprite rectangle, and asks for the other sheep each tick', () => {
+    const getOthers = vi.fn(() => [] as Rect[]);
+    const { stage } = make(woolly, { getOthers });
+    stage.tick(16);
+    expect(getOthers).toHaveBeenCalled();
+    const r = stage.rect();
+    expect(r).toMatchObject({ x: stage.snapshot().x, y: stage.snapshot().y });
+    expect(r?.width).toBe(r?.height);
+  });
+
+  it('has no rectangle for the bounce sheep', () => {
+    expect(make(bounce).stage.rect()).toBeNull();
+  });
+
   it('does nothing while paused, and resumes', () => {
     const { stage } = make(woolly);
     stage.setPaused(true);

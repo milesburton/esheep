@@ -159,6 +159,7 @@ const addSheep = (): void => {
   const cx = c.getContext('2d', { willReadFrequently: true });
   if (!cx) throw new Error('2D canvas unavailable');
   cx.imageSmoothingEnabled = false;
+  let me: Stage | null = null;
   const stage = createStage({
     pack: loaded.pack,
     sheet: loaded.sheet,
@@ -167,11 +168,17 @@ const addSheep = (): void => {
     seed: (seed + index * 7919) >>> 0,
     getWorld: world,
     getPrefs: () => prefs,
+    getOthers: () =>
+      flock
+        .filter((o) => o.stage !== me)
+        .map((o) => o.stage.rect())
+        .filter((r): r is Rect => r !== null),
     place: (x, y) => {
       c.style.transform = `translate(${x}px, ${y}px)`;
     },
     onSound: () => beep(),
   });
+  me = stage;
   stage.setPaused(paused);
   const sheep: Sheep = { stage, canvas: c };
   attachPointer(sheep);

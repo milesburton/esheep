@@ -93,6 +93,8 @@ interface ElectronAPI {
   onPause: (cb: () => void) => void;
   onResume: (cb: () => void) => void;
   onPrefsChanged: (cb: (prefs: Prefs) => void) => void;
+  /** Window bounds of every other sheep window. */
+  getOtherSheep: () => Promise<Rect[]>;
 }
 
 interface Window {
@@ -105,4 +107,6 @@ interface World {
   areas: readonly Rect[];
   /** Other application windows (floors / walls). */
   windows: readonly Rect[];
+  /** Sprite rectangles of the other sheep, if there are any (they leap over each other). */
+  others?: readonly Rect[];
 }

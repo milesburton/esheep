@@ -101,3 +101,13 @@ The owner has confirmed they hold a licence for the original eSheep artwork, so 
 (`assets/packs/original/`, with a NOTICE), bundled in installers, and the demo's default sheep. The
 generated `woolly` pack stays as an MIT-licensed alternative. This reverses the earlier "local-only"
 stance (ADR 11 and 13); the `--with-original` build flag and `demo:original` script are gone.
+
+## 15. Sheep leap over each other
+
+`World.others` carries the other sheep's sprite rectangles. A walking sheep that closes on one at
+the same floor level (within a quarter sprite, not already mostly overlapping) hops over it half the
+time per tick, reusing the window `hop` with a higher arc (1.3 sprites) and landing just past the
+far side, only if that spot has floor under it. Sleeping or grazing sheep get jumped over, and two
+sheep walking at each other pass one another. In the app each renderer polls the main process
+(`get-other-sheep`, window bounds of the other windows, every 50 ms) and insets them to sprite
+rectangles; in the demo the flock shares rectangles directly.

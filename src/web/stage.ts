@@ -13,6 +13,7 @@ import {
   moveHeld,
   play,
   release,
+  sheepRect,
   spawn,
   update,
   type CompiledPack,
@@ -38,6 +39,8 @@ export interface StageOptions {
   /** Move the host window / element so the canvas origin is at (x, y) in screen px. */
   readonly place: (x: number, y: number) => void;
   readonly onSound?: () => void;
+  /** Sprite rectangles of the other sheep, so this one can leap over them. */
+  readonly getOthers?: () => readonly Rect[];
 }
 
 export interface Snapshot {
@@ -61,6 +64,8 @@ export interface Stage {
   snapshot(): Snapshot;
   /** Classic packs: switch straight to the named animation. Returns false if it is unknown. */
   play(name: string): boolean;
+  /** The sprite's rectangle in screen px (classic packs), or null for the bounce sheep. */
+  rect(): Rect | null;
   /** Names of the animations a classic pack can play (empty for the bounce sheep). */
   animations(): string[];
 }
@@ -74,6 +79,7 @@ interface Brain {
   release(v: { vx: number; vy: number }, world: World): void;
   draw(ctx: CanvasRenderingContext2D): void;
   snapshot(): Snapshot;
+  rect?(): Rect;
   play?(name: string, world: World): void;
   animations?(): string[];
   readonly pad: number;
@@ -92,7 +98,8 @@ const classicBrain = (o: StageOptions, pack: ClassicPack): Brain => {
     pad,
     pos: () => ({ x: s.x, y: s.y }),
     step: (dtMs, world, prefs) => {
-      const u = update(cp, s, world, cfg, dtMs * prefs.speed);
+      const others = o.getOthers?.() ?? [];
+      const u = update(cp, s, { ...world, others }, cfg, dtMs * prefs.speed);
       s = u.state;
       return prefs.sound && u.started.some((n) => n.startsWith('boing'));
     },
@@ -126,6 +133,7 @@ const classicBrain = (o: StageOptions, pack: ClassicPack): Brain => {
       );
       ctx.restore();
     },
+    rect: () => sheepRect(s, cfg),
     play: (name, world) => {
       s = play(cp, s, name, world, cfg).state;
     },
@@ -225,6 +233,7 @@ export const createStage = (o: StageOptions): Stage => {
       place();
       return true;
     },
+    rect: () => brain.rect?.() ?? null,
     animations: () => brain.animations?.() ?? [],
     snapshot: () => brain.snapshot(),
   };

@@ -26,6 +26,8 @@ const run = async (): Promise<void> => {
   const pack = await api.loadPack();
   let areas = await api.getWorkAreas();
   let windows: Rect[] = [];
+  /** Other sheep windows (their sprites sit centred in them), refreshed often so leaps look right. */
+  let others: Rect[] = [];
 
   const sheet =
     pack.kind === 'classic'
@@ -45,6 +47,7 @@ const run = async (): Promise<void> => {
     seed: crypto.getRandomValues(new Uint32Array(1))[0],
     getWorld: () => ({ areas, windows }),
     getPrefs: () => prefs,
+    getOthers: () => others,
     place: (x, y) => api.moveWindow(x, y),
     onSound: beep,
   });
@@ -59,6 +62,19 @@ const run = async (): Promise<void> => {
     areas = await api.getWorkAreas();
     windows = obstaclesFrom(await api.getWindows(), areas);
   }, POLL_MS);
+
+  const OTHERS_MS = 50;
+  setInterval(async () => {
+    const mine = live.stage?.rect();
+    if (!mine) return;
+    const inset = (128 - mine.width) / 2;
+    others = (await api.getOtherSheep()).map((b) => ({
+      x: b.x + inset,
+      y: b.y + inset,
+      width: mine.width,
+      height: mine.height,
+    }));
+  }, OTHERS_MS);
 
   // Click-through everywhere except on the sheep's own pixels (mouse moves are forwarded to us).
   let clickThrough = true;

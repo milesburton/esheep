@@ -76,6 +76,7 @@ test.describe('sheep window', () => {
     expect(surface.hasProcess).toBe('undefined');
     expect(surface.api).toEqual(
       [
+        'getOtherSheep',
         'getWindows',
         'getWorkAreas',
         'isPaused',
@@ -233,6 +234,17 @@ test.describe('several sheep', () => {
     await seam((s) => s.removeSheep());
     expect(await seam((s) => s.sheepCount())).toBe(1);
     await expect.poll(sheepWindows).toBe(1);
+  });
+
+  test('each sheep window can see the others (so they can leap over one another)', async () => {
+    const first = await sheepPage();
+    expect(await first.evaluate(() => window.electronAPI.getOtherSheep())).toEqual([]);
+    await seam((s) => s.addSheep());
+    await expect
+      .poll(async () => (await first.evaluate(() => window.electronAPI.getOtherSheep())).length)
+      .toBe(1);
+    const [other] = await first.evaluate(() => window.electronAPI.getOtherSheep());
+    expect(other).toMatchObject({ width: 128, height: 128 });
   });
 
   test('the Sheep setting opens that many windows, and every one runs its own sheep', async () => {

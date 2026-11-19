@@ -11,6 +11,7 @@ const api: ElectronAPI = {
   loadPack: () => ipcRenderer.invoke('load-pack'),
   listPacks: () => ipcRenderer.invoke('list-packs'),
   isPaused: () => ipcRenderer.invoke('is-paused'),
+  getOtherSheep: () => ipcRenderer.invoke('get-other-sheep'),
   onPause: (cb) => {
     ipcRenderer.on('pause', () => cb());
   },

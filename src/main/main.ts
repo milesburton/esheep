@@ -133,6 +133,9 @@ ipcMain.handle('get-work-areas', () => {
 });
 ipcMain.handle('load-prefs', () => loadPrefs());
 ipcMain.handle('is-paused', () => paused);
+ipcMain.handle('get-other-sheep', (e) =>
+  sheepWins.filter((w) => !w.isDestroyed() && w.webContents !== e.sender).map((w) => w.getBounds()),
+);
 ipcMain.handle('list-packs', () => listPacks(asset('')));
 ipcMain.handle('load-pack', () => loadPack(asset(''), store.get('pack')));
 ipcMain.on('set-click-through', (e, ignore: boolean) => {
