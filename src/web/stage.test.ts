@@ -42,6 +42,11 @@ const flick = (s: ReturnType<typeof make>['stage']): void => {
   s.up(85);
 };
 
+/** Advance in 16ms frames (the stage clamps large steps, like a real animation frame would). */
+const settle = (s: ReturnType<typeof make>['stage'], ms: number): void => {
+  for (let t = 0; t < ms; t += 16) s.tick(16);
+};
+
 describe('classic stage', () => {
   it('draws and positions the sheep immediately', () => {
     const { ctx, place } = make(woolly);
@@ -57,6 +62,14 @@ describe('classic stage', () => {
     expect(stage.snapshot()).not.toEqual(before);
     expect(place.mock.calls.length).toBeGreaterThan(1);
     expect(ctx.drawImage.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it('plays a named animation on request and lists what is available', () => {
+    const { stage } = make(woolly);
+    expect(stage.animations()).toContain('rotate1a');
+    expect(stage.play('rotate1a')).toBe(true);
+    expect(stage.snapshot().animation).toBe('rotate1a');
+    expect(stage.play('no such animation')).toBe(false);
   });
 
   it('does nothing while paused, and resumes', () => {
@@ -75,8 +88,8 @@ describe('classic stage', () => {
   it('scales dt by the speed preference', () => {
     const slow = make(woolly, { getPrefs: () => ({ speed: 0.5, sound: false }) });
     const fast = make(woolly, { getPrefs: () => ({ speed: 2, sound: false }) });
-    slow.stage.tick(1000);
-    fast.stage.tick(1000);
+    settle(slow.stage, 1500);
+    settle(fast.stage, 1500);
     // Both fall in from above; the faster one has fallen further in the same wall time.
     expect(fast.stage.snapshot().y).toBeGreaterThan(slow.stage.snapshot().y);
   });
@@ -124,7 +137,7 @@ describe('classic stage', () => {
 
   it('mirrors the sprite when flipped', () => {
     const { stage, ctx } = make(woolly);
-    stage.tick(3000); // let it fall in from above onto the display
+    settle(stage, 3000); // let it fall in from above onto the display
     flick(stage); // thrown to the right => flipped
     stage.tick(100);
     expect(ctx.scale).toHaveBeenCalledWith(-1, 1);
@@ -141,6 +154,14 @@ describe('classic stage', () => {
     const off = make(boingPack);
     for (let i = 0; i < 80; i++) off.stage.tick(100);
     expect(off.onSound).not.toHaveBeenCalled();
+  });
+});
+
+describe('bounce play', () => {
+  it('has no animations to play', () => {
+    const { stage } = make(bounce);
+    expect(stage.animations()).toEqual([]);
+    expect(stage.play('walk')).toBe(false);
   });
 });
 

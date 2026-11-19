@@ -96,16 +96,24 @@ describe('parsePackXml', () => {
       'utf8',
     );
     const woolly = parsePackXml(xml, 'woolly');
-    expect(woolly.animations.map((a) => a.name)).toEqual([
-      'walk',
-      'turn',
-      'sleep',
-      'drag',
-      'fall',
-      'land',
-      'toss',
-    ]);
-    expect(woolly.tilesX * woolly.tilesY).toBe(16);
+    const names = woolly.animations.map((a) => a.name);
+    expect(names).toHaveLength(56);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'walk',
+        'rotate1a',
+        'drag',
+        'fall',
+        'toss',
+        'sleep1a',
+        'bathb',
+        'jump',
+      ]),
+    );
+    // Every frame must point at a tile that exists on the sheet.
+    const frames = woolly.animations.flatMap((a) => a.frames);
+    expect(Math.max(...frames)).toBeLessThan(woolly.tilesX * woolly.tilesY);
+    expect(woolly.tilesX).toBe(16);
     expect(woolly.png.startsWith('data:image/png;base64,iVBOR')).toBe(true);
   });
 });

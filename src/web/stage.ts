@@ -11,6 +11,7 @@ import {
   compilePack,
   grab,
   moveHeld,
+  play,
   release,
   spawn,
   update,
@@ -58,6 +59,10 @@ export interface Stage {
   dragging(): boolean;
   setPaused(paused: boolean): void;
   snapshot(): Snapshot;
+  /** Classic packs: switch straight to the named animation. Returns false if it is unknown. */
+  play(name: string): boolean;
+  /** Names of the animations a classic pack can play (empty for the bounce sheep). */
+  animations(): string[];
 }
 
 /** The two behaviours share this shape so pointer handling is written once. */
@@ -69,6 +74,8 @@ interface Brain {
   release(v: { vx: number; vy: number }, world: World): void;
   draw(ctx: CanvasRenderingContext2D): void;
   snapshot(): Snapshot;
+  play?(name: string, world: World): void;
+  animations?(): string[];
   readonly pad: number;
 }
 
@@ -119,6 +126,10 @@ const classicBrain = (o: StageOptions, pack: ClassicPack): Brain => {
       );
       ctx.restore();
     },
+    play: (name, world) => {
+      s = play(cp, s, name, world, cfg).state;
+    },
+    animations: () => cp.pack.animations.map((a) => a.name),
     snapshot: () => ({ x: s.x, y: s.y, animation: s.animName, mode: s.mode.kind, frame: s.frame }),
   };
 };
@@ -207,6 +218,14 @@ export const createStage = (o: StageOptions): Stage => {
     setPaused: (p) => {
       paused = p;
     },
+    play: (name) => {
+      if (!brain.play || !brain.animations?.().includes(name)) return false;
+      brain.play(name, o.getWorld());
+      brain.draw(o.ctx);
+      place();
+      return true;
+    },
+    animations: () => brain.animations?.() ?? [],
     snapshot: () => brain.snapshot(),
   };
 };

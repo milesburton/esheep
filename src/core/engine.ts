@@ -592,6 +592,19 @@ export const update = (
   return { state: s, started };
 };
 
+/** Switch straight to the named animation (e.g. from a demo picker); unknown names are ignored. */
+export const play = (
+  cp: CompiledPack,
+  s: SheepState,
+  name: string,
+  world: World,
+  cfg: Config,
+): Update => {
+  const target = cp.byName.get(name);
+  if (!target) return { state: s, started: [] };
+  return begin(cp, { ...s, mode: { kind: 'walk' }, hop: null }, target.id, world, cfg);
+};
+
 export const isHeld = (s: SheepState): boolean => s.mode.kind === 'held';
 export const isThrown = (s: SheepState): boolean => s.mode.kind === 'thrown';
 export const sheepRect = (s: SheepState, cfg: Config): Rect => ({

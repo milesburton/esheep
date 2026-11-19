@@ -191,8 +191,8 @@ test.describe('settings', () => {
       const [primary] = await window.electronAPI.getWorkAreas();
       return primary.y + primary.height;
     });
-    // Classic sheep stands on the bottom of the work area (64px sprite centred in the 128px window: 32px pad above and below).
-    await expect.poll(async () => (await sheepBounds()).y + 96, { timeout: 15_000 }).toBe(bottom);
+    // Classic sheep stands on the bottom of the work area (40px sprite centred in the 128px window: 44px pad above and below).
+    await expect.poll(async () => (await sheepBounds()).y + 84, { timeout: 15_000 }).toBe(bottom);
   });
 });
 

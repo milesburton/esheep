@@ -65,3 +65,12 @@ The original pack never climbs windows (only #1 has a `windowSide` border, and `
 the spot), so the engine adds a `hop`: on meeting the side of a window it can reach, or while
 approaching a ledge above head height, a sheep plays `jump` and follows an arc onto the window top.
 Reach is capped at 16 sprite heights and the target must keep the sprite on a display.
+
+## 11. A full original sprite pack for the demo
+
+The Pages demo ships `woolly`: 118 original 40 px poses (`scripts/classic/art.mjs`, drawn
+procedurally, MIT) driving all 56 classic animations: turning, sleeping, weeing, bathing, climbing,
+falling, tossing and more. Sequencing (timings, transitions, spawns) follows the MIT-licensed
+desktopPet format and is recorded in `scripts/classic/structure.json` with frames named by pose,
+so no original artwork is involved. The demo has an Animation picker to trigger any of them.
+`npm run assets` regenerates the sheet; the original eSheep art remains local-only.

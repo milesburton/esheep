@@ -6,6 +6,7 @@ import {
   isThrown,
   moveHeld,
   release,
+  play,
   sheepRect,
   spawn,
   update,
@@ -474,6 +475,24 @@ describe('grab, drop and toss', () => {
     expect(thrown.state.mode.kind).toBe('thrown');
     const { state } = run(cp, thrown.state, world(), 6000);
     expect(state.mode.kind).toBe('walk');
+  });
+});
+
+describe('play', () => {
+  it('switches straight to a named animation, cancelling a throw or hop', () => {
+    const cp = compiled();
+    const s = spawn(cp, world(), CFG, 1).state;
+    const u = play(cp, { ...s, mode: { kind: 'held' } }, 'turn', world(), CFG);
+    expect(u.started).toEqual(['turn']);
+    expect(u.state.animName).toBe('turn');
+    expect(u.state.mode.kind).toBe('walk');
+    expect(u.state.frame).toBe(2);
+  });
+
+  it('ignores unknown names', () => {
+    const cp = compiled();
+    const s = spawn(cp, world(), CFG, 1).state;
+    expect(play(cp, s, 'nope', world(), CFG)).toEqual({ state: s, started: [] });
   });
 });
 

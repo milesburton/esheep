@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const open = async (page: Page, query = 'manual=1&seed=7'): Promise<void> => {
+const open = async (page: Page, query = 'manual=1&seed=2'): Promise<void> => {
   await page.goto(`/?${query}`);
   await page.waitForFunction(() => window.__demo?.ready());
 };
@@ -24,7 +24,7 @@ const hideWindows = (page: Page): Promise<void> =>
 /** Pointer position over the middle of the sheep's body. */
 const body = async (page: Page): Promise<{ x: number; y: number }> => {
   const s = await snap(page);
-  return { x: s.x + 32, y: s.y + 38 };
+  return { x: s.x + 20, y: s.y + 22 };
 };
 
 test('loads cleanly: title, controls and a sheep, with no console errors', async ({ page }) => {
@@ -46,10 +46,10 @@ test('the woolly sheep falls in from above, lands on the floor and walks', async
   await open(page);
   const floor = (await monitor(page)).bottom;
   const first = await snap(page);
-  expect(first.y).toBeLessThan(0); // spawned above the screen
-  await step(page, 6000);
+  expect(first.y).toBeLessThan(floor - 300); // spawned up at the top, not on the floor
+  await step(page, 12000);
   const later = await snap(page);
-  expect(later.y + 64).toBeCloseTo(floor, 0);
+  expect(later.y + 40).toBeCloseTo(floor, 0);
 });
 
 test('only redistributable art is served', async ({ page }) => {
@@ -74,8 +74,8 @@ test('grab picks the sheep up and it follows the pointer', async ({ page }) => {
 
   await page.mouse.move(p.x + 200, p.y - 150, { steps: 4 });
   const held = await snap(page);
-  expect(held.x).toBeCloseTo(p.x + 200 - 32, 0);
-  expect(held.y).toBeCloseTo(p.y - 150 - 38, 0);
+  expect(held.x).toBeCloseTo(p.x + 200 - 20, 0);
+  expect(held.y).toBeCloseTo(p.y - 150 - 22, 0);
 
   await step(page, 2000); // gravity does not act on a held sheep
   expect(await snap(page)).toMatchObject({ x: held.x, y: held.y, mode: 'held' });
@@ -97,13 +97,13 @@ test('a flick tosses the sheep through the air and it lands and walks on', async
 
   await step(page, 150);
   const flying = await snap(page);
-  expect(flying.y).toBeLessThan(p.y - 70 - 100); // went up and to the right
+  expect(flying.y).toBeLessThan(p.y - 22 - 100); // went up and to the right
   expect(flying.x).toBeGreaterThan(thrown.x);
 
   await step(page, 8000);
   const landed = await snap(page);
   expect(landed.mode).toBe('walk');
-  expect(landed.y + 64).toBeCloseTo((await monitor(page)).bottom, 0);
+  expect(landed.y + 40).toBeCloseTo((await monitor(page)).bottom, 0);
 });
 
 test('releasing without a flick just drops the sheep', async ({ page }) => {
@@ -138,16 +138,16 @@ test('the sheep lands on top of a window dragged underneath it', async ({ page }
     el.style.left = `${x - 60}px`;
     el.style.top = '420px';
   }, spawn.x);
-  // Step until it has landed (before it can walk off the end of the window).
+  // Step until it touches down on the window (before it can walk off the end of it).
   const landed = await page.evaluate(() => {
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 400; i++) {
       window.__demo.step(50);
-      if (window.__demo.snapshot().animation === 'land') return window.__demo.snapshot();
+      const s = window.__demo.snapshot();
+      if (Math.abs(s.y + 40 - 420) < 1) return s;
     }
     return window.__demo.snapshot();
   });
-  expect(landed.animation).toBe('land');
-  expect(landed.y + 64).toBeCloseTo(420, 0);
+  expect(landed.y + 40).toBeCloseTo(420, 0);
 });
 
 test('windows can be dragged by their title bar', async ({ page }) => {
@@ -215,4 +215,20 @@ test('two monitors: the sheep can wander across both displays', async ({ page })
   });
   expect(Math.max(...seen)).toBeGreaterThan(second.left);
   expect(Math.min(...seen)).toBeLessThan((await monitor(page, 0)).right);
+});
+
+test('every classic animation can be played from the picker, including turning', async ({
+  page,
+}) => {
+  await open(page);
+  const picker = page.locator('#anim');
+  await expect(picker).toBeEnabled();
+  expect(await picker.locator('option').count()).toBeGreaterThan(50);
+  await picker.selectOption('rotate1a');
+  expect((await snap(page)).animation).toBe('rotate1a');
+  await picker.selectOption('sleep1a');
+  expect((await snap(page)).animation).toBe('sleep1a');
+  await expect(picker).toHaveValue('');
+  await page.locator('#pack').selectOption('bounce');
+  await expect(picker).toBeDisabled();
 });

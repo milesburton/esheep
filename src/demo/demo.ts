@@ -66,6 +66,36 @@ const loadPack = async (
   return { pack, sheet, size: { width: sheet.width, height: sheet.height } };
 };
 
+const LABELS: Record<string, string> = {
+  rotate1a: 'turn round (A)',
+  rotate1b: 'turn round (B)',
+  pissa: 'wee (A)',
+  pissb: 'wee (B)',
+  sleep1a: 'fall asleep (1)',
+  sleep1b: 'wake up (1)',
+  sleep2a: 'lie down',
+  sleep2b: 'get up',
+  sleep3a: 'doze off',
+  sleep3b: 'wake from doze',
+  batha: 'bath: appears',
+  bathb: 'bath: wash',
+  vertical_walk_up: 'climb up',
+  vertical_walk_down: 'climb down',
+  top_walk: 'walk on the ceiling',
+};
+const label = (n: string): string => LABELS[n] ?? n.replace(/_/g, ' ');
+const animSelect = $<HTMLSelectElement>('anim');
+/** Lists the pack's animations so every one (turning, sleeping, bathing, ...) can be triggered. */
+const fillAnimations = (names: readonly string[]): void => {
+  animSelect.replaceChildren(new Option('Play…', ''), ...names.map((n) => new Option(label(n), n)));
+  animSelect.disabled = names.length === 0;
+};
+animSelect.addEventListener('change', () => {
+  if (animSelect.value) stage?.play(animSelect.value);
+  animSelect.value = '';
+  refreshStatus();
+});
+
 /** Bumped on every start so a slow earlier load can't overwrite a newer choice. */
 let generation = 0;
 
@@ -87,6 +117,7 @@ const start = async (name: string): Promise<void> => {
     onSound: () => beep(),
   });
   stage.setPaused(paused);
+  fillAnimations(stage.animations());
   tickOnce(0);
 };
 
