@@ -111,3 +111,17 @@ far side, only if that spot has floor under it. Sleeping or grazing sheep get ju
 sheep walking at each other pass one another. In the app each renderer polls the main process
 (`get-other-sheep`, window bounds of the other windows, every 50 ms) and insets them to sprite
 rectangles; in the demo the flock shares rectangles directly.
+
+## 16. Greeting, macOS windows and DPI
+
+- **Greeting:** when a sheep closes on another at the same level it first rolls for a greeting (15%:
+  the pack's `sync` animation, which the classic data defines but never reaches) before leaping.
+  `petSide` transitions (also in the classic data, previously ignored) now apply while another sheep
+  stands right beside it.
+- **macOS:** `node-window-manager` already supports macOS. `createWindowSource` now loads it there,
+  asks for the Accessibility permission (falling back to screen edges if refused) and keeps untitled
+  windows, since titles need Screen Recording permission.
+- **DPI:** the library divides Windows bounds by the window's own monitor scale factor, which is only
+  right on one monitor. We undo that (`physicalBounds`) and convert the physical rectangle with
+  Electron's `screen.screenToDipRect`, which is correct per display on mixed-DPI desktops.
+  None of macOS or DPI has been run on real hardware; the logic is unit-tested with fakes.

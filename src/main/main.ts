@@ -3,14 +3,32 @@ import Store from 'electron-store';
 import * as path from 'path';
 import { enableAutoLaunch } from './autolaunch';
 import { BUILTIN, listPacks, loadPack } from './pack';
-import { createWindowSource, type WindowManagerLike } from './windows';
+import { createWindowSource, type NativeWindow, type WindowManagerLike } from './windows';
 
 const SIZE = 128;
-// The native module is optional (Windows only), so it is required lazily and may fail to load.
-const loadNative = (): WindowManagerLike =>
+// The native module is optional (Windows and macOS), so it is required lazily and may fail to load.
+const loadNative = (): WindowManagerLike => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('node-window-manager').windowManager;
-const getVisibleWindows = createWindowSource(process.platform, process.pid, loadNative);
+  const wm = require('node-window-manager').windowManager;
+  return {
+    requestAccessibility: () => wm.requestAccessibility?.(),
+    getWindows: () =>
+      wm
+        .getWindows()
+        .map((w: NativeWindow & { getMonitor: () => { getScaleFactor: () => number } }) => ({
+          id: w.id,
+          processId: w.processId,
+          getTitle: () => w.getTitle(),
+          getBounds: () => w.getBounds(),
+          isVisible: () => w.isVisible(),
+          getScaleFactor: () => w.getMonitor().getScaleFactor(),
+        })),
+  };
+};
+// Windows reports physical pixels; Electron lays out in DIPs (needed for high-DPI / mixed-DPI).
+const getVisibleWindows = createWindowSource(process.platform, process.pid, loadNative, (r) =>
+  screen.screenToDipRect(null, r),
+);
 
 const MAX_SHEEP = 12;
 const DEFAULT_PREFS: Prefs = { speed: 1, sound: false, pack: BUILTIN, count: 1 };

@@ -55,13 +55,16 @@ windows and an optional second monitor. Grab the sheep, fling it, and watch it l
   velocity, then the sheep tumbles, bounces off walls, windows and floors, and lands (harder throws
   land harder).
 - **Multi-monitor**: the walkable area is the union of every display; the sheep crosses between them.
-- **Window collisions** on Windows (via `node-window-manager`): the sheep walks on top of windows and
-  bounces off their sides. macOS and Linux fall back to screen edges only (see below).
+- **Window collisions** on Windows and macOS (via `node-window-manager`): the sheep walks on top of
+  windows, hops up onto them and bounces off their sides. Windows bounds are converted from physical
+  pixels to DIPs, so high-DPI and mixed-DPI desktops line up. macOS asks for the Accessibility
+  permission (without it, or on Linux, the sheep uses screen edges only).
 - **Sprite packs**: two bundled, plus any desktopPet/eSheep-format `animations.xml`.
 - **A flock**: run 1 to 12 sheep at once (one transparent window each). Add and remove them from the
   tray or Settings, or with the demo's Add sheep button.
-- **Sheep leap over each other**: a sheep that walks into another at the same level jumps over it
-  and lands on the far side (in the app via shared window positions, in the demo directly).
+- **Sheep meet**: a sheep that walks into another at the same level stops to greet it (the pack's
+  `sync` animation) or leaps over it and lands on the far side. Sheep standing side by side also
+  unlock the pack's `petSide` behaviours. In the app this uses shared window positions.
 - Tray menu (Pause / Resume, Add / Remove sheep, Settings…, Quit), persisted preferences (speed,
   sound, pack, sheep count) and start-at-login.
 
@@ -156,12 +159,13 @@ test and coverage reports. A bot commit pushes the result. Nothing in those bloc
 
 ## Known gaps
 
-- macOS and Linux have no window enumeration yet (a native addon using `CGWindowListCopyWindowInfo`
-  with Screen Recording permission on macOS; EWMH on X11; Wayland exposes no global geometry).
-- Windows reports window bounds in physical pixels; high-DPI scaling is not converted yet.
-- Mixed-DPI multi-monitor positioning can drift (an Electron limitation).
-- Packaging (`npm run build`) is configured for NSIS, DMG and AppImage but has only been exercised
-  through the manual **Package** workflow.
+- Linux has no window enumeration (EWMH on X11 could do it; Wayland exposes no global geometry).
+- macOS and Windows window enumeration, the Windows DPI conversion and the macOS permission flow are
+  covered by unit tests with fakes but have not been run on real machines.
+- Mixed-DPI multi-monitor positioning of the sheep windows themselves can still drift (an Electron
+  limitation).
+- Packaging (`npm run build`) is configured for NSIS, DMG and AppImage and builds on all three OSes
+  in the manual **Package** workflow; only the Linux build has been launched.
 
 ## Licence
 

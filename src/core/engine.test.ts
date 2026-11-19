@@ -394,6 +394,50 @@ describe('leaping over other sheep', () => {
     expect(seeds.filter((n) => run(cp, s(n), w, 400).started.includes('jump')).length).toBe(0);
   });
 
+  it('stops to greet a sheep it meets (the sync animation), then carries on', () => {
+    const base = miniPack();
+    const cp = compilePack({
+      ...base,
+      animations: [
+        ...base.animations,
+        anim({ id: 7, name: 'jump', frames: [8, 9, 10, 11], next: [next(1)] }),
+        anim({ id: 8, name: 'sync', frames: [12, 13], repeat: '3', next: [next(1)] }),
+      ],
+    });
+    const blocker = at(200 + CFG.size + 10);
+    const w = world({ others: [blocker] });
+    const results = seeds.map((seed) => run(cp, walker(cp, seed), w, 3000));
+    expect(results.filter((r) => r.started.includes('sync')).length).toBeGreaterThan(0);
+    expect(results.filter((r) => r.started.includes('jump')).length).toBeGreaterThan(0);
+    // Greeting never leaves it stuck: every run ends up beyond the other sheep or still walking.
+    for (const r of results) expect(r.state.mode.kind).toBe('walk');
+  });
+
+  it("offers the pack's petSide transitions only while another sheep is right beside it", () => {
+    const base = miniPack();
+    const cp = compilePack({
+      ...base,
+      animations: [
+        ...base.animations.map((a) =>
+          a.id === 1 ? { ...a, border: [next(7, 100, 'petSide')] } : a,
+        ),
+        anim({ id: 7, name: 'nap', frames: [8], next: [next(1)] }),
+      ],
+    });
+    // Walking left into the screen edge with a sheep right beside it.
+    const atEdge = (): SheepState => ({
+      ...spawn(cp, world(), CFG, 1).state,
+      x: 3,
+      y: FLOOR_Y,
+      flipped: false,
+      entered: true,
+    });
+    const beside = world({ others: [at(CFG.size + 10)] });
+    expect(run(cp, atEdge(), beside, 600).started).toContain('nap');
+    expect(run(cp, atEdge(), world(), 600).started).not.toContain('nap');
+    expect(run(cp, atEdge(), world({ others: [at(700)] }), 600).started).not.toContain('nap');
+  });
+
   it('two sheep walking at each other get past one another', () => {
     const cp = jumpPack();
     let a = walker(cp, 1, 100);

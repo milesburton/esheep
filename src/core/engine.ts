@@ -85,6 +85,8 @@ interface Flags {
   readonly vertical: boolean;
   readonly top: boolean;
   readonly windowSide: boolean;
+  /** Another sheep is right beside us on the same level (the pack's `petSide` contexts). */
+  readonly petSide: boolean;
 }
 
 const GRAVITY = 2600; // px / s² for thrown sheep
@@ -263,18 +265,35 @@ const LEAP_OVERLAP = 0.6;
 /** Chance per tick of leaping once another sheep is in the way. */
 const LEAP_CHANCE = 0.5;
 
-/** Another sheep in our path, at the same level: where a leap over it would land, or null. */
-const leapTarget = (s: SheepState, dir: number, world: World, cfg: Config): Hop | null => {
+/** Chance per tick of stopping to greet (the pack's `sync` animation) instead of leaping. */
+const GREET_CHANCE = 0.15;
+
+/** Another sheep in our path, at the same level. */
+const otherAhead = (s: SheepState, dir: number, world: World, cfg: Config): Rect | null => {
   const S = cfg.size;
   const feet = s.y + S;
-  const other = (world.others ?? []).find((o) => {
-    const gap = dir > 0 ? o.x - (s.x + S) : s.x - (o.x + o.width);
-    return (
-      gap <= S * LEAP_REACH &&
-      gap >= -S * LEAP_OVERLAP &&
-      Math.abs(o.y + o.height - feet) <= S * 0.4
-    );
-  });
+  return (
+    (world.others ?? []).find((o) => {
+      const gap = dir > 0 ? o.x - (s.x + S) : s.x - (o.x + o.width);
+      return (
+        gap <= S * LEAP_REACH &&
+        gap >= -S * LEAP_OVERLAP &&
+        Math.abs(o.y + o.height - feet) <= S * 0.4
+      );
+    }) ?? null
+  );
+};
+
+/** Where a leap over `other` would land, or null if there is no floor there. */
+const leapTarget = (
+  s: SheepState,
+  dir: number,
+  other: Rect | null,
+  world: World,
+  cfg: Config,
+): Hop | null => {
+  const S = cfg.size;
+  const feet = s.y + S;
   if (!other) return null;
   const x1 = dir > 0 ? other.x + other.width + S * 0.1 : other.x - S * 1.1;
   const supported =
@@ -328,6 +347,12 @@ const flagsOf = (s: SheepState, world: World, cfg: Config): Flags => {
         !onScreenLower(world.areas, cfg.size, s.x + TOL, s.y)),
     top: s.entered && !onScreen(world.areas, cfg.size, s.x, s.y - TOL),
     windowSide: hopTarget(s, world, cfg) !== null,
+    petSide: (world.others ?? []).some(
+      (o) =>
+        Math.abs(o.y + o.height - feet) <= cfg.size * 0.4 &&
+        Math.max(o.x - (s.x + cfg.size), s.x - (o.x + o.width)) <= cfg.size * 0.3 &&
+        Math.max(o.x - (s.x + cfg.size), s.x - (o.x + o.width)) >= -cfg.size * LEAP_OVERLAP,
+    ),
   };
 };
 
@@ -346,8 +371,10 @@ const allowed = (only: string, f: Flags): boolean => {
       return f.top;
     case 'windowSide':
       return f.windowSide;
+    case 'petSide':
+      return f.petSide;
     default:
-      return false; // petSide etc.: there are no other pets
+      return false;
   }
 };
 
@@ -614,11 +641,17 @@ export const update = (
     const heading = Math.sign(s.p0.x * dir);
     if (heading !== 0 && !s.hop && (flags.taskbar || flags.window)) {
       const jump = cp.byName.get('jump');
-      const leap = jump ? leapTarget(s, heading, world, cfg) : null;
-      if (jump && leap) {
+      const meet = otherAhead(s, heading, world, cfg);
+      if (meet) {
         const [pick, next] = nextRandom(s.rng);
         s = { ...s, rng: next };
-        if (pick < LEAP_CHANCE) {
+        const greet = cp.byName.get('sync');
+        if (greet && pick < GREET_CHANCE) {
+          restart(greet.id, 1); // stop and greet: a sheep meeting a sheep
+          continue;
+        }
+        const leap = jump ? leapTarget(s, heading, meet, world, cfg) : null;
+        if (jump && leap && pick < GREET_CHANCE + LEAP_CHANCE) {
           restart(jump.id, 1);
           s = { ...s, hop: leap };
           continue;
