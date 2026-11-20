@@ -268,3 +268,22 @@ the real app, where each sheep sees the others up to 50 ms late, 0.3% of samples
 case of 7-10 px. The remainder are the ~50 ms when a hopping sheep touches down where another has just
 stepped and the standing one slides clear. Tests: unit (in-turn and stale-position models over six
 seeds and 40 simulated seconds) and real-browser and real-Electron e2e with measured ceilings.
+
+## 25. Keeping the Electron e2e honest on a slow CI runner
+
+Cutting v0.1.1 took four CI rounds, all about the tests, none about the app. What was learned:
+
+- **Never evaluate on a window you just told to reload.** Changing the pack or size reloads the sheep
+  window; a following `page.evaluate` on it dies with "Execution context was destroyed". Read anything
+  you need (like the work-area bottom) from the main process (`app.evaluate`), which does not reload.
+- **Sample against the wall clock, inside the main process.** The first app overlap test did 300
+  round trips across six windows and blew the 120 s limit on a slow runner; it now runs one
+  `app.evaluate` loop for 25 s with four windows.
+- **Tear down defensively.** `app.close()` was seen to hang for minutes after a test that had passed,
+  and the Playwright worker-teardown timeout then fails the whole job even when the retry passes.
+  `afterEach` now races `close()` against 15 s, then kills the process and logs that it did.
+- **Reproduce before changing.** Squeezing the suite onto one or two cores with busy loops
+  (`taskset -c 0,1` plus background `while :; do :; done`) reproduced the reload race immediately and
+  then proved the fixes (two full runs, `--retries=0`).
+- Packaging output (`release/`) is excluded from markdown lint, which the pre-commit hook had picked up.
+- New sheep windows are spread out at creation instead of all starting at screen centre.
