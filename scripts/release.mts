@@ -19,17 +19,24 @@ if (!kind) {
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')) as { version: string };
 sh('git', ['fetch', '--quiet']);
 const head = sh('git', ['rev-parse', 'HEAD']);
+// The README bot's commits carry [skip ci] and so never have a CI run; what matters is CI on the
+// latest commit that does (the code it sits on).
+const codeHead =
+  sh('git', ['log', '--format=%H', '--fixed-strings', '--invert-grep', '--grep=[skip ci]', '-1']) ||
+  head;
 const [behind, ahead] = sh('git', ['rev-list', '--left-right', '--count', 'origin/main...HEAD'])
   .split(/\s+/)
   .map(Number);
 
 const ciGreen = ((): boolean | null => {
   try {
+    // Filter on `conclusion` in jq: the API's own `status=success` filter returns nothing even for a
+    // run that succeeded.
     const n = sh('gh', [
       'api',
-      `repos/{owner}/{repo}/actions/workflows/ci.yml/runs?head_sha=${head}&status=success`,
+      `repos/{owner}/{repo}/actions/workflows/ci.yml/runs?head_sha=${codeHead}`,
       '--jq',
-      '.total_count',
+      '[.workflow_runs[] | select(.conclusion == "success" and .event == "push")] | length',
     ]);
     return Number(n) > 0;
   } catch {

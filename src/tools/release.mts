@@ -28,7 +28,7 @@ export interface RepoState {
   readonly behind: number;
   /** Commits we have that origin/main does not (they would be released too, so they must be pushed). */
   readonly ahead: number;
-  /** CI succeeded on HEAD: true / false, or null if it could not be determined. */
+  /** CI succeeded on the latest code commit (skipping the bot's [skip ci] ones): true / false / null if unknown. */
   readonly ciGreen: boolean | null;
 }
 
@@ -40,5 +40,5 @@ export const problems = (s: RepoState): string[] => [
   ...(s.ahead > 0
     ? [`main is ${s.ahead} commit(s) ahead of origin: push them (and let CI pass) first`]
     : []),
-  ...(s.ciGreen === false ? ['CI has not passed on this commit yet'] : []),
+  ...(s.ciGreen === false ? ['CI has not passed on the latest code commit yet'] : []),
 ];

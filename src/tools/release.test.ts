@@ -48,7 +48,9 @@ describe('problems', () => {
     expect(problems({ ...ok, clean: false })[0]).toMatch(/uncommitted/);
     expect(problems({ ...ok, behind: 2 })[0]).toMatch(/2 commit.*behind.*pull/);
     expect(problems({ ...ok, ahead: 1 })[0]).toMatch(/1 commit.*ahead.*push/);
-    expect(problems({ ...ok, ciGreen: false })[0]).toMatch(/CI has not passed/);
+    expect(problems({ ...ok, ciGreen: false })[0]).toMatch(
+      /CI has not passed on the latest code commit/,
+    );
   });
 
   it('reports several at once', () => {
