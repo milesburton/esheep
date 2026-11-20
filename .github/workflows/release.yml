@@ -1,0 +1,72 @@
+name: Release
+
+# Automatic releases. Bump `version` in package.json and push to main (`npm run release -- patch`
+# does that): once CI is green on that commit, this builds the installers for Windows, macOS and
+# Linux and publishes them as a GitHub Release tagged v<version>. If that version is already
+# released, nothing happens, so ordinary pushes to main never release by accident.
+#
+# Why this calls package.yml directly instead of pushing a tag: a tag pushed with the built-in
+# GITHUB_TOKEN does not start other workflows, so "auto-tag and let Package fire" would silently do
+# nothing.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: # re-check the current main by hand (e.g. after a release failed part-way)
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # Only a CI run that passed, on a push to main (never a pull request).
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') }}
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.v.outputs.sha }}
+      tag: ${{ steps.v.outputs.tag }}
+      needed: ${{ steps.v.outputs.needed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - id: v
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "package.json version '$version' is not plain x.y.z: not releasing"
+            echo "needed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # CI must have passed on exactly this commit (it has, for a workflow_run; check it for a manual run).
+          green=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SHA&status=success" --jq '.total_count')
+          if [ "${green:-0}" -lt 1 ]; then
+            echo "CI has not passed on $SHA: not releasing"
+            echo "needed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag is already released: nothing to do"
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$tag is not released yet: releasing $SHA"
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: check
+    if: needs.check.outputs.needed == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/package.yml
+    with:
+      sha: ${{ needs.check.outputs.sha }}
+      tag: ${{ needs.check.outputs.tag }}

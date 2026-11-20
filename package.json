@@ -24,6 +24,7 @@
     "fetch-original": "node scripts/fetch-original.mjs",
     "sim": "npm run build:ts && node scripts/sim-engine.mjs",
     "readme": "node scripts/update-readme.mts",
+    "release": "node scripts/release.mts",
     "audit": "npm audit --audit-level=high",
     "prepare": "[ -n \"$CI\" ] || git config core.hooksPath .husky"
   },

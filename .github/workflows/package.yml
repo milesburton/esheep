@@ -1,17 +1,54 @@
 name: Package
 
-# Builds installers with electron-builder on each OS. Run it by hand to check the packages build, or
-# push a version tag (`git tag v0.2.0 && git push origin v0.2.0`) to publish them as a GitHub Release.
+# Builds installers with electron-builder on each OS, and (for a release) publishes them.
+#   - automatic: release.yml calls this once CI is green on a commit whose package.json version has no
+#     tag yet (`workflow_call`: it passes the commit and the tag to create);
+#   - manual tag: pushing a `v*` tag does the same (`git tag -a v0.2.0 && git push origin v0.2.0`);
+#   - by hand: "Run workflow" builds the installers and uploads them as artifacts, without publishing.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      sha:
+        description: The commit to build
+        type: string
+        required: true
+      tag:
+        description: The release tag to publish (created at that commit if it does not exist)
+        type: string
+        required: true
 
 permissions:
   contents: read
 
 jobs:
+  # Works out which commit to build and which tag (if any) to publish, whichever way we were started.
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.m.outputs.sha }}
+      tag: ${{ steps.m.outputs.tag }}
+    steps:
+      - id: m
+        shell: bash
+        env:
+          IN_SHA: ${{ inputs.sha }}
+          IN_TAG: ${{ inputs.tag }}
+        run: |
+          sha="${IN_SHA:-$GITHUB_SHA}"
+          tag="$IN_TAG"
+          if [ -z "$tag" ] && [[ "$GITHUB_REF" == refs/tags/v* ]]; then tag="$GITHUB_REF_NAME"; fi
+          if [ -n "$tag" ] && ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "refusing to release odd-looking tag: $tag"; exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "building $sha, release tag: ${tag:-none (build only)}"
+
   package:
+    needs: meta
     strategy:
       fail-fast: false
       matrix:
@@ -20,15 +57,19 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.meta.outputs.sha }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: A tag must match the package version
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: A release tag must match the package version
+        if: needs.meta.outputs.tag != ''
         shell: bash
-        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+        run: test "v$(node -p "require('./package.json').version")" = "$TAG"
       - run: npm run build
 
       # Prove the packaged app really starts on its own OS: it renders a sheep, reports whether the
@@ -58,9 +99,12 @@ jobs:
           if-no-files-found: error
 
   release:
-    # Only for version tags. Publishes whatever built, but the Windows installer is mandatory.
-    needs: package
-    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && needs.package.result != 'skipped' }}
+    # Only when there is a tag to publish. Publishes whatever built, but the Windows installer is mandatory.
+    needs: [meta, package]
+    if: ${{ !cancelled() && needs.meta.outputs.tag != '' && needs.package.result != 'skipped' }}
+    concurrency:
+      group: release-${{ needs.meta.outputs.tag }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -81,7 +125,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }} # this job has no checkout, so tell gh which repo
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          SHA: ${{ needs.meta.outputs.sha }}
         run: |
           cat > notes.md <<'EOF'
           ## Downloads
@@ -102,5 +147,5 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
           else
-            gh release create "$TAG" dist/* --verify-tag --title "eSheep $TAG" --notes-file notes.md --generate-notes
+            gh release create "$TAG" dist/* --target "$SHA" --title "eSheep $TAG" --notes-file notes.md --generate-notes
           fi

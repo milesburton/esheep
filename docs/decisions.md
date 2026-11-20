@@ -303,3 +303,28 @@ sheep afterwards keeps it. The Settings list now shows friendly names ("Original
 (generated)", "Bouncing sheep (simple)"). The e2e suite seeds the old bouncing-sheep preferences for the
 tests that need that sheep, and has four new tests for fresh installs, the upgrade, and a deliberate
 choice surviving it.
+
+## 27. Automatic releases
+
+Releasing used to be: bump the version, push, wait for CI, then tag by hand (ADR 22). It is now: bump
+the version and push (`npm run release -- patch|minor|major`), and a workflow does the rest.
+
+`release.yml` runs when the **CI** workflow completes on a push to main (`workflow_run`; never for pull
+requests). Its `check` job reads `package.json`, requires a plain `x.y.z`, requires CI to have passed on
+that exact commit (checked through the API, which also covers a manual run), and asks whether
+`gh release view vX.Y.Z` exists. Only if it does not does the `release` job call `package.yml` as a
+reusable workflow (`workflow_call`) with the commit and the tag.
+
+**Why not just push a tag from a workflow?** Events caused by the built-in `GITHUB_TOKEN` (including a tag
+push) do not start other workflows, so an auto-tagger would appear to work and release nothing. Calling
+the reusable workflow avoids needing a personal access token. `package.yml` now has a small `meta` job that
+works out the commit and tag whichever way it was started (called, tag pushed, or run by hand), refuses a
+tag that is not `vX.Y.Z` (inputs reach the shell through environment variables), and the final
+`gh release create --target <sha>` creates the tag itself at the built commit. This also removes ADR 22's
+`[skip ci]` pitfall: the commit being built is passed explicitly, not inferred from a tag. A concurrency
+group per tag stops two near-simultaneous CI passes releasing the same version twice.
+
+`scripts/release.mts` is only git plumbing around `src/tools/release.mts` (pure and unit-tested): it
+refuses unless you are on a clean, up-to-date `main` with CI green on HEAD, bumps, commits and pushes.
+The decision to release is still a human one (bump the version); everything after it is automatic.
+Releasing on every merge, or deriving the version from conventional commits, would be a further step.

@@ -153,6 +153,21 @@ Every classic pack, original or generated, is livened up at load time by
 [`src/main/tune.ts`](src/main/tune.ts) (faster tempo and stride, tuned transition weights).
 `npm run fetch-original` re-downloads the pack.
 
+## Releasing
+
+Releases are automatic. To ship what is on `main`:
+
+```bash
+npm run release -- patch      # or minor / major; add --dry-run to just see what it would do
+```
+
+That bumps `version` in `package.json`, commits `chore(release): x.y.z` and pushes. Nothing else is needed:
+once CI is green on that commit, the [Release workflow](.github/workflows/release.yml) builds the installers
+for Windows, macOS and Linux (starting the packaged Windows app as a check) and publishes them, with
+`SHA256SUMS.txt`, as the GitHub Release `vx.y.z`. A version that is already released is skipped, so ordinary
+pushes never release by accident. You can still push a `v*` tag by hand, or run the
+[Package workflow](.github/workflows/package.yml) manually to build installers without publishing.
+
 ## How it works
 
 ```text
