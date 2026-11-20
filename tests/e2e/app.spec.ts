@@ -40,7 +40,17 @@ test.beforeEach(async () => {
   app = await launch();
 });
 test.afterEach(async () => {
-  await app.close();
+  // On a CI runner app.close() has been seen to hang after a test that had already passed. Ask nicely,
+  // give it 15s, then kill it (and say so, so a recurrence is visible rather than silently absorbed).
+  const proc = app.process();
+  await Promise.race([
+    app.close().catch(() => undefined),
+    new Promise((resolve) => setTimeout(resolve, 15_000)),
+  ]);
+  if (proc.exitCode === null && proc.signalCode === null) {
+    console.warn('eSheep did not exit within 15s of close(); killing it');
+    proc.kill('SIGKILL');
+  }
   fs.rmSync(userData, { recursive: true, force: true });
 });
 
