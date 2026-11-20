@@ -1,6 +1,6 @@
 {
   "name": "esheep",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A modern e-Sheep desktop pet",
   "main": "dist/main/main.js",
   "author": "Miles Burton",
@@ -15,7 +15,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "lint:md": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"#dist\" \"#coverage\" \"#reports\" \"#playwright-report\" \"#test-results\"",
+    "lint:md": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"#dist\" \"#release\" \"#coverage\" \"#reports\" \"#playwright-report\" \"#test-results\"",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
