@@ -129,6 +129,9 @@
         touch-action: none;
         cursor: grab;
       }
+      .sheep.it {
+        filter: drop-shadow(0 0 3px #ff3d3d) drop-shadow(0 0 7px #ff3d3d);
+      }
       .sheep {
         position: fixed;
         left: 0;
@@ -176,6 +179,7 @@
         ><button id="add" type="button">Add sheep</button
         ><button id="remove" type="button">Remove</button> <output id="count">1</output></span
       >
+      <button id="tag" type="button" aria-pressed="false">Play tag</button>
       <button id="kickabout" type="button" aria-pressed="false">Kick-about</button>
       <button id="pause" type="button">Pause</button>
       <button id="reset" type="button">Reset windows</button>

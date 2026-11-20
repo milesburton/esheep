@@ -1,5 +1,5 @@
 import { evalExpr } from './expr.js';
-import { TOL, farthestValid, onScreen, onScreenLower, overlapsX } from './geometry.js';
+import { TOL, farthestValid, intersects, onScreen, onScreenLower, overlapsX } from './geometry.js';
 import { stepBallistic } from './physics.js';
 import { drawMany, nextRandom } from './rng.js';
 
@@ -274,7 +274,22 @@ const hopTarget = (s: SheepState, world: World, cfg: Config): Hop | null => {
 const LEAP_REACH = 0.25;
 const LEAP_OVERLAP = 0.6;
 /** Chance per tick of leaping once another sheep is in the way. */
-const LEAP_CHANCE = 0.5;
+const LEAP_CHANCE = 0.35;
+
+/** How far below a sheep's top its back is (as a share of its height): where a passenger's feet land. */
+const BACK_DEPTH = 0.2;
+
+/** The tops of the other sheep's backs: floors a sheep can stand on or land on. */
+const backs = (world: World, cfg: Config): Rect[] =>
+  (world.others ?? []).map((o) => ({
+    x: o.x,
+    y: o.y + cfg.size * BACK_DEPTH,
+    width: o.width,
+    height: o.height - cfg.size * BACK_DEPTH,
+  }));
+
+/** Chance per tick of climbing onto the back of a sheep in the way (a share of the meeting roll). */
+const CLIMB_CHANCE = 0.15;
 
 /** Chance per tick of stopping to greet (the pack's `sync` animation) instead of leaping. */
 const GREET_CHANCE = 0.15;
@@ -293,6 +308,15 @@ const otherAhead = (s: SheepState, dir: number, world: World, cfg: Config): Rect
       );
     }) ?? null
   );
+};
+
+/** Where a hop onto `other`'s back would land (centred on it), or null if something is already there. */
+const climbTarget = (s: SheepState, other: Rect, world: World, cfg: Config): Hop | null => {
+  const S = cfg.size;
+  const x1 = other.x + (other.width - S) / 2;
+  const y1 = other.y + S * BACK_DEPTH - S;
+  const taken = (world.others ?? []).some((o) => o !== other && intersects(x1, y1, S, o));
+  return taken ? null : { x0: s.x, y0: s.y, x1, y1, arc: S * 0.9 };
 };
 
 /** Where a leap over `other` would land, or null if there is no floor there. */
@@ -379,7 +403,10 @@ const flagsOf = (s: SheepState, world: World, cfg: Config): Flags => {
       (a) =>
         Math.abs(feet - (a.y + a.height)) <= TOL && (!s.entered || overlapsX(cfg.size, s.x, a)),
     ),
-    window: world.windows.some((w) => Math.abs(feet - w.y) <= TOL && overlapsX(cfg.size, s.x, w)),
+    // Windows, and the backs of other sheep, are things to stand on.
+    window: [...world.windows, ...backs(world, cfg)].some(
+      (w) => Math.abs(feet - w.y) <= TOL && overlapsX(cfg.size, s.x, w),
+    ),
     vertical:
       s.entered &&
       (!onScreenLower(world.areas, cfg.size, s.x - TOL, s.y) ||
@@ -466,6 +493,9 @@ const move = (
       const feet = s.y + S;
       const floors = [
         ...world.windows.filter((w) => overlapsX(S, afterX.x, w)).map((w) => w.y),
+        ...backs(world, cfg)
+          .filter((b) => overlapsX(S, afterX.x, b))
+          .map((b) => b.y),
         ...world.areas.filter((a) => overlapsX(S, afterX.x, a)).map((a) => a.y + a.height),
       ].filter((fy) => feet <= fy + TOL && ny + S >= fy);
       return floors.length > 0 ? { y: Math.min(...floors) - S, hit: true } : { y: ny, hit: false };
@@ -683,7 +713,48 @@ export const update = (
       }
     }
     const heading = Math.sign(s.p0.x * dir);
-    if (world.ball && !s.hop && (flags.taskbar || flags.window) && LOCOMOTION.has(s.anim.name)) {
+    // Tag: "it" runs at the nearest sheep, runners run away from "it" (and leap over it if cornered).
+    const tag = world.tag;
+    const playing =
+      !!tag && !s.hop && (flags.taskbar || flags.window) && LOCOMOTION.has(s.anim.name);
+    if (playing && tag?.target && !(tag.role === 'it' && tag.wait)) {
+      const S = cfg.size;
+      const toward = tag.target.x + tag.target.width / 2 >= s.x + S / 2 ? 1 : -1;
+      if (tag.role === 'it') {
+        s = { ...s, flipped: toward > 0 };
+        const run = cp.byName.get('run');
+        if (run && !RUNNING.has(s.anim.name)) {
+          restart(run.id, 1);
+          continue;
+        }
+      } else {
+        const away = -toward;
+        const gap = toward > 0 ? tag.target.x - (s.x + S) : s.x - (tag.target.x + tag.target.width);
+        const jump = cp.byName.get('jump');
+        // Cornered (no room behind) with "it" close: hop over it instead of being caught.
+        const cornered = !onScreenLower(world.areas, S, s.x + away * S * 1.5, s.y);
+        const leap =
+          jump && cornered && gap <= S * 0.6 ? leapTarget(s, toward, tag.target, world, cfg) : null;
+        if (jump && leap) {
+          restart(jump.id, 1);
+          s = { ...s, hop: leap };
+          continue;
+        }
+        s = { ...s, flipped: away > 0 };
+        const run = cp.byName.get('run');
+        if (run && !RUNNING.has(s.anim.name)) {
+          restart(run.id, 1);
+          continue;
+        }
+      }
+    }
+    if (
+      world.ball &&
+      !tag?.target &&
+      !s.hop &&
+      (flags.taskbar || flags.window) &&
+      LOCOMOTION.has(s.anim.name)
+    ) {
       const chase = chaseBall(s, world.ball, cfg);
       if (chase?.kickable && s.kickCd <= 0) {
         const [a, r1] = nextRandom(s.rng);
@@ -708,7 +779,7 @@ export const update = (
     }
     if (heading !== 0 && !s.hop && (flags.taskbar || flags.window)) {
       const jump = cp.byName.get('jump');
-      const meet = otherAhead(s, heading, world, cfg);
+      const meet = tag ? null : otherAhead(s, heading, world, cfg); // no greeting or leaping mid-game
       if (meet) {
         const [pick, next] = nextRandom(s.rng);
         s = { ...s, rng: next };
@@ -717,8 +788,14 @@ export const update = (
           restart(greet.id, 1); // stop and greet: a sheep meeting a sheep
           continue;
         }
+        const climb = jump ? climbTarget(s, meet, world, cfg) : null;
+        if (jump && climb && pick >= GREET_CHANCE && pick < GREET_CHANCE + CLIMB_CHANCE) {
+          restart(jump.id, 1); // hop up onto its back
+          s = { ...s, hop: climb };
+          continue;
+        }
         const leap = jump ? leapTarget(s, heading, meet, world, cfg) : null;
-        if (jump && leap && pick < GREET_CHANCE + LEAP_CHANCE) {
+        if (jump && leap && pick < GREET_CHANCE + CLIMB_CHANCE + LEAP_CHANCE) {
           restart(jump.id, 1);
           s = { ...s, hop: leap };
           continue;

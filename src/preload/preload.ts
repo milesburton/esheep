@@ -14,6 +14,7 @@ const api: ElectronAPI = {
   isPaused: () => ipcRenderer.invoke('is-paused'),
   getOtherSheep: () => ipcRenderer.invoke('get-other-sheep'),
   getBall: () => ipcRenderer.invoke('get-ball'),
+  getTag: () => ipcRenderer.invoke('get-tag'),
   kickBall: (kick) => ipcRenderer.send('ball-kick', kick),
   ballGrab: () => ipcRenderer.send('ball-grab'),
   ballMove: (x, y) => ipcRenderer.send('ball-move', x, y),

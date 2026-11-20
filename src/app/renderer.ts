@@ -31,6 +31,8 @@ const run = async (): Promise<void> => {
   /** The shared kick-about ball, as last polled (extrapolated by its velocity between polls). */
   let ball: { x: number; y: number; size: number; vx: number; vy: number } | null = null;
   let ballAt = 0;
+  /** This sheep's part in tag, as last polled. */
+  let tag: { role: 'it' | 'runner'; target: Rect | null; wait: boolean } | null = null;
 
   const sheet =
     pack.kind === 'classic'
@@ -53,6 +55,7 @@ const run = async (): Promise<void> => {
     pixelRatio: window.devicePixelRatio,
     getPrefs: () => prefs,
     getOthers: () => others,
+    getTag: () => tag,
     getBall: () => {
       if (!ball) return null;
       const age = Math.min((performance.now() - ballAt) / 1000, 0.1);
@@ -82,6 +85,10 @@ const run = async (): Promise<void> => {
 
   const OTHERS_MS = 50;
   setInterval(async () => {
+    tag = await api.getTag();
+    // "It" glows red (tight, since the window margin clips anything wider).
+    canvas.style.filter =
+      tag?.role === 'it' ? 'drop-shadow(0 0 2px #ff3d3d) drop-shadow(0 0 3px #ff3d3d)' : '';
     ball = await api.getBall();
     ballAt = performance.now();
     const mine = live.stage?.rect();

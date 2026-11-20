@@ -353,11 +353,9 @@ describe('leaping over other sheep', () => {
     const hopped = seeds
       .map((seed) => run(cp, walker(cp, seed), w, 1500))
       .filter((r) => r.started.includes('jump'));
-    expect(hopped.length).toBeGreaterThan(3);
-    for (const r of hopped) {
-      expect(r.state.x).toBeGreaterThan(blocker.x + blocker.width - 1);
-      expect(r.state.y).toBe(FLOOR_Y);
-    }
+    const leapt = hopped.filter((r) => r.state.y === FLOOR_Y); // the rest climbed onto its back
+    expect(leapt.length).toBeGreaterThan(2);
+    for (const r of leapt) expect(r.state.x).toBeGreaterThan(blocker.x + blocker.width - 1);
   });
 
   it('leaps leftwards too', () => {
@@ -370,8 +368,8 @@ describe('leaping over other sheep', () => {
     });
     const hopped = seeds
       .map((seed) => run(cp, left(seed), w, 1500))
-      .filter((r) => r.started.includes('jump'));
-    expect(hopped.length).toBeGreaterThan(3);
+      .filter((r) => r.started.includes('jump') && r.state.y === FLOOR_Y);
+    expect(hopped.length).toBeGreaterThan(2);
     for (const r of hopped) expect(r.state.x).toBeLessThan(blocker.x + 1);
   });
 
@@ -391,7 +389,12 @@ describe('leaping over other sheep', () => {
     const edge = at(1000 - CFG.size);
     const w = world({ others: [edge] });
     const s = (seed: number): SheepState => walker(cp, seed, 1000 - 2 * CFG.size - 5);
-    expect(seeds.filter((n) => run(cp, s(n), w, 400).started.includes('jump')).length).toBe(0);
+    // It may climb onto the blocker, but it never leaps over it into the void beyond the display.
+    for (const n of seeds) {
+      const r = run(cp, s(n), w, 600);
+      expect(r.state.x).toBeLessThanOrEqual(edge.x + 1);
+      expect(r.state.x + CFG.size).toBeLessThanOrEqual(1001);
+    }
   });
 
   it('stops to greet a sheep it meets (the sync animation), then carries on', () => {
@@ -582,6 +585,192 @@ describe('chasing and kicking the ball', () => {
     });
     const r = runAll(cp, walker(cp, 400, true), world({ ball: ballAt(400 + CFG.size + 5) }), 300);
     expect(r.kicks.length).toBe(1);
+  });
+});
+
+describe('standing on other sheep', () => {
+  const jumpPack = (): CompiledPack => {
+    const base = miniPack();
+    return compilePack({
+      ...base,
+      animations: [
+        ...base.animations,
+        anim({ id: 7, name: 'jump', frames: [8, 9, 10, 11], next: [next(1)] }),
+      ],
+    });
+  };
+  const at = (x: number, y = FLOOR_Y): Rect => ({ x, y, width: CFG.size, height: CFG.size });
+  const backY = (o: Rect): number => o.y + CFG.size * 0.2 - CFG.size; // where a passenger's top ends up
+  const walker = (cp: CompiledPack, seed: number, x: number): SheepState => ({
+    ...spawn(cp, world(), CFG, seed).state,
+    x,
+    y: FLOOR_Y,
+    flipped: true,
+    entered: true,
+  });
+  const seeds = Array.from({ length: 16 }, (_, i) => i + 1);
+
+  it('a sheep walking into another sometimes climbs onto its back and stands there', () => {
+    const cp = jumpPack();
+    const carrier = at(200 + CFG.size + 10);
+    const w = world({ others: [carrier] });
+    const climbed = seeds
+      .map((seed) => run(cp, walker(cp, seed, 200), w, 1200))
+      .filter((r) => Math.abs(r.state.y - backY(carrier)) < 1);
+    expect(climbed.length).toBeGreaterThan(0);
+    for (const r of climbed) {
+      expect(r.state.x).toBeGreaterThan(carrier.x - CFG.size / 2);
+      expect(r.state.x).toBeLessThan(carrier.x + CFG.size);
+    }
+  });
+
+  it('does not climb onto a sheep that already has a passenger', () => {
+    const cp = jumpPack();
+    const carrier = at(400);
+    const passenger = at(400, carrier.y - CFG.size * 0.8); // standing on its back
+    const w = world({ others: [carrier, passenger] });
+    const onTop = seeds
+      .map((seed) => run(cp, walker(cp, seed, 400 - CFG.size - 10), w, 1200))
+      .filter((r) => r.state.y < FLOOR_Y - CFG.size / 2);
+    expect(onTop).toHaveLength(0);
+  });
+
+  it('a falling sheep lands on the back of a sheep below it', () => {
+    const cp = compiled();
+    const carrier = at(400);
+    const w = world({ others: [carrier] });
+    const falling: SheepState = {
+      ...spawn(cp, w, CFG, 1).state,
+      x: 400,
+      y: 100,
+      entered: true,
+    };
+    // Mini pack: walk's gravity hook starts the fall; it should come to rest on the carrier's back.
+    const r = run(cp, falling, w, 4000);
+    expect(r.started).toContain('fall');
+    expect(r.state.y).toBeCloseTo(backY(carrier), 0);
+  });
+
+  it('a passenger falls to the floor when the carrier walks away', () => {
+    const cp = compiled();
+    const carrier = at(400);
+    const w1 = world({ others: [carrier] });
+    const onBack: SheepState = { ...walker(cp, 1, 400), y: backY(carrier) };
+    const settled = run(cp, { ...onBack, flipped: false }, w1, 100);
+    expect(settled.state.y).toBeCloseTo(backY(carrier), 0);
+    // Carrier moves 300px away: nothing under the passenger any more.
+    const w2 = world({ others: [at(800)] });
+    const fell = run(cp, settled.state, w2, 4000);
+    expect(fell.started).toContain('fall');
+    expect(fell.state.y).toBeCloseTo(FLOOR_Y, 0);
+  });
+
+  it('a pile of sheep is a stack: standing on a back counts as standing on a window', () => {
+    // The mini pack's walk has a window-only transition to "sleep"-like animation 'turn'.
+    const base = miniPack();
+    const cp = compilePack({
+      ...base,
+      animations: base.animations.map((a) =>
+        a.id === 1 ? { ...a, next: [next(2, 100, 'window')], repeat: '0' } : a,
+      ),
+    });
+    const carrier = at(400);
+    const w = world({ others: [carrier] });
+    const onBack: SheepState = { ...walker(cp, 1, 400), y: backY(carrier), flipped: false };
+    expect(run(cp, onBack, w, 600).started).toContain('turn');
+    // ...whereas on the plain floor, the window-only transition is never offered.
+    expect(run(cp, walker(cp, 1, 100), world(), 600).started).not.toContain('turn');
+  });
+});
+
+describe('playing tag', () => {
+  const base = miniPack();
+  const cp = compilePack({
+    ...base,
+    animations: [
+      ...base.animations,
+      anim({
+        id: 7,
+        name: 'run',
+        start: { x: '-10', y: '0', offsety: '0', opacity: '1', interval: '100' },
+        end: { x: '-10', y: '0', offsety: '0', opacity: '1', interval: '100' },
+        frames: [0, 1],
+        repeat: '4',
+        next: [next(1)],
+      }),
+      anim({ id: 8, name: 'jump', frames: [8, 9, 10, 11], next: [next(1)] }),
+    ],
+  });
+  const rect = (x: number): Rect => ({ x, y: FLOOR_Y, width: CFG.size, height: CFG.size });
+  const sheepAt = (x: number, flipped = false): SheepState => ({
+    ...spawn(cp, world(), CFG, 2).state,
+    x,
+    y: FLOOR_Y,
+    flipped,
+    entered: true,
+  });
+  const play = (s0: SheepState, w: World, ms: number) => {
+    let state = s0;
+    const started: string[] = [];
+    for (let t = 0; t < ms; t += 16) {
+      const u = update(cp, state, w, CFG, 16);
+      state = u.state;
+      started.push(...u.started);
+    }
+    return { state, started };
+  };
+
+  it('"it" turns to face its target and runs at it', () => {
+    const w = world({ tag: { role: 'it', target: rect(700), wait: false } });
+    const r = play(sheepAt(100, false), w, 700); // facing left, target is to the right
+    expect(r.started).toContain('run');
+    expect(r.state.flipped).toBe(true);
+    expect(r.state.x).toBeGreaterThan(100);
+  });
+
+  it('"it" stands its ground while still counting (wait)', () => {
+    const w = world({ tag: { role: 'it', target: rect(700), wait: true } });
+    expect(play(sheepAt(100, false), w, 700).started).not.toContain('run');
+  });
+
+  it('a runner turns away from "it" and runs', () => {
+    const w = world({ tag: { role: 'runner', target: rect(300), wait: false } });
+    const r = play(sheepAt(500, false), w, 700); // "it" is on its left, so it runs right
+    expect(r.started).toContain('run');
+    expect(r.state.flipped).toBe(true);
+    expect(r.state.x).toBeGreaterThan(500);
+    // "It" on its right: it runs left instead (not cornered, so it does not leap).
+    const left = play(
+      sheepAt(400, true),
+      world({ tag: { role: 'runner', target: rect(700), wait: false } }),
+      700,
+    );
+    expect(left.state.flipped).toBe(false);
+    expect(left.state.x).toBeLessThan(400);
+  });
+
+  it('a runner cornered against the screen edge hops over "it" to escape', () => {
+    const it = rect(3 + CFG.size + 4); // right beside it, runner pinned to the left edge
+    const w = world({ tag: { role: 'runner', target: it, wait: false } });
+    const r = play(sheepAt(3, false), w, 900);
+    expect(r.started).toContain('jump');
+    expect(r.state.x).toBeGreaterThan(it.x); // landed on the far side
+    expect(r.state.y).toBe(FLOOR_Y);
+  });
+
+  it('does not greet or leap over other sheep while a game is on (tag decides what they do)', () => {
+    const blocker = rect(100 + CFG.size + 10);
+    const w = world({ others: [blocker], tag: { role: 'it', target: null, wait: false } });
+    const jumps = Array.from({ length: 12 }, (_, i) => i + 1).filter((seed) => {
+      const s = { ...sheepAt(100, true), rng: seed * 7919 };
+      return play(s, w, 800).started.includes('jump');
+    });
+    expect(jumps).toHaveLength(0);
+  });
+
+  it('plays as normal with no target to chase or flee', () => {
+    const w = world({ tag: { role: 'it', target: null, wait: false } });
+    expect(play(sheepAt(300, true), w, 500).started).not.toContain('run');
   });
 });
 

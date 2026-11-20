@@ -79,6 +79,7 @@ test.describe('sheep window', () => {
         'ballRelease',
         'getBall',
         'getOtherSheep',
+        'getTag',
         'getWindows',
         'getWorkAreas',
         'isPaused',
@@ -132,6 +133,7 @@ test.describe('tray menu and pause', () => {
       'Pause',
       'Add sheep',
       'Remove sheep',
+      'Play tag',
       'Start kick-about',
       'Settings…',
       'Quit',
@@ -145,6 +147,7 @@ test.describe('tray menu and pause', () => {
       'Resume',
       'Add sheep',
       'Remove sheep',
+      'Play tag',
       'Start kick-about',
       'Settings…',
       'Quit',
@@ -159,6 +162,7 @@ test.describe('tray menu and pause', () => {
       'Pause',
       'Add sheep',
       'Remove sheep',
+      'Play tag',
       'Start kick-about',
       'Settings…',
       'Quit',
@@ -370,6 +374,70 @@ test.describe('kick-about', () => {
     );
     await expect.poll(async () => (await info()).active).toBe(false);
     await expect.poll(async () => (await info()).windows).toBe(0);
+  });
+});
+
+test.describe('tag', () => {
+  type Seam = {
+    startTag(): void;
+    stopTag(): void;
+    tagState(): { it: number | null; tags: number } | null;
+    sheepCount(): number;
+    trayLabels(): string[];
+  };
+  const seam = <T>(fn: (s: Seam) => T): Promise<T> =>
+    app.evaluate(
+      (_e, src) =>
+        new Function('s', `return (${src})(s)`)(
+          (globalThis as unknown as { __esheep: Seam }).__esheep,
+        ) as unknown,
+      fn.toString(),
+    ) as Promise<T>;
+  const glowing = (): Promise<number> =>
+    app.evaluate(({ BrowserWindow }) =>
+      Promise.all(
+        BrowserWindow.getAllWindows()
+          .filter((w) => w.webContents.getURL().endsWith('/app/index.html'))
+          .map((w) =>
+            w.webContents.executeJavaScript(
+              "document.querySelector('canvas').style.filter.includes('drop-shadow')",
+            ),
+          ),
+      ).then((flags) => flags.filter(Boolean).length),
+    );
+
+  test('is unavailable for the bounce sheep, which cannot play', async () => {
+    await sheepPage();
+    await seam((s) => s.startTag());
+    expect(await seam((s) => s.tagState())).toBeNull(); // builtin pack: no game
+  });
+
+  test('a game of tag: one sheep glows as "it", and it changes hands as sheep are caught', async () => {
+    test.setTimeout(150_000);
+    const page = await sheepPage();
+    page.evaluate(() =>
+      window.electronAPI.savePrefs({ speed: 2, sound: false, pack: 'woolly', count: 4, scale: 1 }),
+    );
+    await expect.poll(() => seam((s) => s.sheepCount())).toBe(4);
+    const bottom = await page.evaluate(async () => {
+      const [primary] = await window.electronAPI.getWorkAreas();
+      return primary.y + primary.height;
+    });
+    await expect.poll(async () => (await sheepBounds()).y + 46, { timeout: 30_000 }).toBe(bottom);
+    await seam((s) => s.startTag());
+    expect(await seam((s) => s.trayLabels())).toContain('Stop tag');
+    expect((await seam((s) => s.tagState()))?.it).not.toBeNull();
+    await expect.poll(glowing, { timeout: 10_000 }).toBe(1);
+    await expect
+      .poll(async () => (await seam((s) => s.tagState()))?.tags ?? 0, {
+        timeout: 120_000,
+        intervals: [1000],
+      })
+      .toBeGreaterThan(0);
+    expect(await glowing()).toBe(1); // still exactly one "it"
+    await seam((s) => s.stopTag());
+    expect(await seam((s) => s.tagState())).toBeNull();
+    await expect.poll(glowing).toBe(0);
   });
 });
 

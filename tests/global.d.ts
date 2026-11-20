@@ -17,6 +17,8 @@ interface Window {
     ball(): { x: number; y: number; vx: number; vy: number } | null;
     kickAbout(on: boolean): void;
     kicks(): number;
+    tag(): { it: number; tags: number } | null;
+    tagPlay(on: boolean): void;
     ready(): boolean;
   };
 }

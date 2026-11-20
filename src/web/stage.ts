@@ -21,13 +21,15 @@ import {
   type Kick,
   type SheepState,
 } from '../core/engine.js';
+import { WINDOW_PAD } from '../core/geometry.js';
+import type { TagView } from '../core/tag.js';
 import { moveDrag, releaseVelocity, startDrag, type Drag, type Point } from '../core/pointer.js';
 
 /** Size of the transparent window / canvas the sheep is drawn into. */
 /** The bounce sheep's window is a fixed square. */
 export const WINDOW = 128;
 /** Transparent margin around a classic sprite, so tossed pixels are never clipped at the edge. */
-export const PAD = 6;
+export const PAD = WINDOW_PAD;
 /** Classic packs: on-screen px per source px. */
 /** Default sprite size multiplier: native pixels (the classic art is 40 px). */
 export const SCALE = 1;
@@ -49,6 +51,8 @@ export interface StageOptions {
   readonly scale?: number;
   /** Device pixels per CSS pixel: the canvas is rendered at this resolution so it stays crisp. */
   readonly pixelRatio?: number;
+  /** Tag, if it is being played: this sheep's role and who to chase or flee. */
+  readonly getTag?: () => TagView | null;
   /** The kick-about ball's rectangle, if there is one: sheep chase it. */
   readonly getBall?: () => Rect | null;
   /** A sheep kicked the ball: the velocity it should take. */
@@ -128,7 +132,8 @@ const classicBrain = (o: StageOptions, pack: ClassicPack): Brain => {
     step: (dtMs, world, prefs, onKick) => {
       const others = o.getOthers?.() ?? [];
       const ball = o.getBall?.() ?? undefined;
-      const u = update(cp, s, { ...world, others, ball }, cfg, dtMs * prefs.speed);
+      const tag = o.getTag?.() ?? undefined;
+      const u = update(cp, s, { ...world, others, ball, tag }, cfg, dtMs * prefs.speed);
       s = u.state;
       u.kicks?.forEach(onKick);
       return prefs.sound && u.started.some((n) => n.startsWith('boing'));

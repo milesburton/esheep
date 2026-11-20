@@ -384,3 +384,60 @@ test.describe('kick-about', () => {
     expect(after).toBeLessThan(before + 1); // the sheep is no further away, and usually much closer
   });
 });
+
+test.describe('tag', () => {
+  test('the button starts a game (adding a second sheep if needed) with exactly one sheep "it"', async ({
+    page,
+  }) => {
+    await open(page);
+    await expect(page.locator('canvas.sheep')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Play tag' }).click();
+    await expect(page.locator('canvas.sheep')).toHaveCount(2); // it takes two to play
+    await expect(page.getByRole('button', { name: 'Stop tag' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('canvas.sheep.it')).toHaveCount(1);
+    const state = await page.evaluate(() => window.__demo.tag());
+    expect(state).toMatchObject({ tags: 0 });
+    await page.getByRole('button', { name: 'Stop tag' }).click();
+    await expect(page.locator('canvas.sheep.it')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__demo.tag())).toBeNull();
+  });
+
+  test('"it" catches somebody, and the marker moves to the sheep that was tagged', async ({
+    page,
+  }) => {
+    await open(page);
+    await hideWindows(page);
+    for (let i = 0; i < 3; i++) await page.evaluate(() => window.__demo.add());
+    await page.evaluate(() => window.__demo.step(9000)); // let everyone land
+    await page.evaluate(() => window.__demo.tagPlay(true));
+    const seen = new Set<number>();
+    let tags = 0;
+    for (let i = 0; i < 90 && tags < 3; i++) {
+      await page.evaluate(() => window.__demo.step(2000));
+      const t = (await page.evaluate(() => window.__demo.tag()))!;
+      seen.add(t.it);
+      tags = t.tags;
+      expect(await page.locator('canvas.sheep.it').count()).toBe(1);
+    }
+    expect(tags).toBeGreaterThan(0);
+    expect(seen.size).toBeGreaterThan(1); // "it" really changed hands
+  });
+
+  test('the game survives a pack switch (the sheep are rebuilt and a new game is dealt)', async ({
+    page,
+  }) => {
+    await open(page);
+    for (let i = 0; i < 2; i++) await page.evaluate(() => window.__demo.add());
+    await page.evaluate(() => window.__demo.tagPlay(true));
+    await page.locator('#pack').selectOption('bounce');
+    await expect.poll(() => page.evaluate(() => window.__demo.count())).toBe(3);
+    await page.locator('#pack').selectOption('woolly');
+    await expect
+      .poll(() => page.evaluate(() => window.__demo.tag()?.it ?? -1))
+      .toBeGreaterThanOrEqual(0);
+    await expect(page.locator('canvas.sheep.it')).toHaveCount(1);
+  });
+});

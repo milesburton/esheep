@@ -1,5 +1,6 @@
 import { ballRect, kickBall, stepBall, type Ball } from '../core/ball.js';
 import { clampIntoAreas, obstaclesFrom } from '../core/geometry.js';
+import { startTag, stepTag, viewFor, type Sprite, type TagGame } from '../core/tag.js';
 import { moveDrag, releaseVelocity, startDrag, type Drag } from '../core/pointer.js';
 import { beep } from '../web/sound.js';
 import { loadClassicSheet, loadImage } from '../web/sprites.js';
@@ -49,10 +50,12 @@ const world = (): World => {
 
 /** One sheep: its own canvas and its own stage (state, drag, drawing). */
 interface Sheep {
+  readonly id: number;
   readonly stage: Stage;
   readonly canvas: HTMLCanvasElement;
 }
 const MAX_SHEEP = 12;
+let nextSheepId = 1;
 const flock: Sheep[] = [];
 /** The sheep the status line and the Animation picker follow: the one last added or grabbed. */
 let focus: Sheep | null = null;
@@ -190,7 +193,60 @@ const stepBallFrame = (dt: number): void => {
   ball = stepBall(ball, world(), ballSize(), (Math.min(dt, 50) * prefs.speed) / 1000);
 };
 
+// ---- tag --------------------------------------------------------------------------------------
+let tagGame: TagGame | null = null;
+let tagSprites: Sprite[] = [];
+let clock = 0; // simulated ms, so tests can step time
+let tagCount = 0;
+
+/** Sprite rectangles of the sheep that can play (classic sheep only). */
+const spritesNow = (): Sprite[] =>
+  flock.flatMap((s) => {
+    const rect = s.stage.rect();
+    return rect ? [{ id: s.id, rect }] : [];
+  });
+
+const tagViewFor = (stage: Stage): ReturnType<typeof viewFor> => {
+  const sheep = flock.find((s) => s.stage === stage);
+  const size = tagSprites[0]?.rect.width ?? 40;
+  return tagGame && sheep ? viewFor(tagGame, sheep.id, tagSprites, size, clock) : null;
+};
+
+const markIt = (): void => {
+  for (const s of flock) s.canvas.classList.toggle('it', tagGame?.it === s.id);
+};
+
+const stepTagFrame = (): void => {
+  if (!tagGame || paused) return;
+  tagSprites = spritesNow();
+  const size = tagSprites[0]?.rect.width ?? 40;
+  const r = stepTag(tagGame, tagSprites, size, clock);
+  tagGame = r.game;
+  if (r.tagged) tagCount += 1;
+  markIt();
+};
+
+const startTagGame = (): void => {
+  while (flock.length < 2 && flock.length < MAX_SHEEP) addSheep(); // it takes two to play
+  wanted = flock.length;
+  tagSprites = spritesNow();
+  tagCount = 0;
+  tagGame = startTag(tagSprites, clock, Math.floor(clock) + flock.length);
+  $('tag').textContent = 'Stop tag';
+  $('tag').setAttribute('aria-pressed', 'true');
+  markIt();
+};
+
+const stopTagGame = (): void => {
+  tagGame = null;
+  for (const s of flock) s.canvas.classList.remove('it');
+  $('tag').textContent = 'Play tag';
+  $('tag').setAttribute('aria-pressed', 'false');
+};
+
 const tickAll = (dt: number): void => {
+  if (!paused) clock += dt;
+  stepTagFrame();
   stepBallFrame(dt);
   drawBall();
   for (const s of flock) {
@@ -234,6 +290,7 @@ const addSheep = (): void => {
     pixelRatio: window.devicePixelRatio,
     getWorld: world,
     getPrefs: () => prefs,
+    getTag: () => (me ? tagViewFor(me) : null),
     getBall: currentBall,
     onKick: (k) => {
       if (!ball || ballDrag) return;
@@ -254,7 +311,7 @@ const addSheep = (): void => {
   c.style.width = `${stage.windowSize()}px`;
   c.style.height = `${stage.windowSize()}px`;
   stage.setPaused(paused);
-  const sheep: Sheep = { stage, canvas: c };
+  const sheep: Sheep = { id: nextSheepId++, stage, canvas: c };
   attachPointer(sheep);
   flock.push(sheep);
   focus = sheep;
@@ -284,6 +341,7 @@ const start = async (name: string): Promise<void> => {
     if (gone && gone.canvas !== canvas) gone.canvas.remove();
   }
   for (let i = 0; i < wanted; i++) addSheep();
+  if (tagGame) startTagGame(); // the sheep were rebuilt, so deal a new game
   focus = flock[0] ?? null;
   if (focus) fillAnimations(focus.stage.animations());
   refreshStatus();
@@ -360,6 +418,7 @@ scaleSelect.addEventListener('change', () => {
   scale = Number(scaleSelect.value);
   void start($<HTMLSelectElement>('pack').value);
 });
+$('tag').addEventListener('click', () => (tagGame ? stopTagGame() : startTagGame()));
 $('kickabout').addEventListener('click', () => (ball ? stopKickAbout() : startKickAbout()));
 $('add').addEventListener('click', () => {
   if (flock.length >= MAX_SHEEP) return;
@@ -424,6 +483,10 @@ Object.assign(window, {
     ball: (): Ball | null => (ball ? { ...ball } : null),
     kickAbout: (on: boolean): void => (on ? startKickAbout() : stopKickAbout()),
     kicks: (): number => kicks,
+    /** Tag state: which sheep (0-based flock index) is it, and how many tags so far. */
+    tag: (): { it: number; tags: number } | null =>
+      tagGame ? { it: flock.findIndex((s) => s.id === tagGame?.it), tags: tagCount } : null,
+    tagPlay: (on: boolean): void => (on ? startTagGame() : stopTagGame()),
     ready: (): boolean => flock.length > 0,
   },
 });

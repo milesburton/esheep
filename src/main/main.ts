@@ -1,9 +1,10 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, Tray } from 'electron';
 import Store from 'electron-store';
 import * as path from 'path';
-import { obstaclesFrom } from '../core/geometry';
+import { WINDOW_PAD, obstaclesFrom } from '../core/geometry';
 import { enableAutoLaunch } from './autolaunch';
 import { createKickAbout } from './kickabout';
+import { createTagPlay } from './tagplay';
 import { BUILTIN, listPacks, loadPack } from './pack';
 import { createWindowSource, type NativeWindow, type WindowManagerLike } from './windows';
 
@@ -206,6 +207,49 @@ const startKickAbout = (): void => {
   tray?.setContextMenu(buildTrayMenu());
 };
 
+// ---- tag: the game state lives here; each sheep window asks what it should do -----------------------
+const TAG_STEP_MS = 50;
+const tagSprites = (): { id: number; rect: Rect }[] =>
+  sheepWins
+    .filter((w) => !w.isDestroyed())
+    .map((w) => {
+      const b = w.getBounds();
+      return {
+        id: w.webContents.id,
+        rect: {
+          x: b.x + WINDOW_PAD,
+          y: b.y + WINDOW_PAD,
+          width: b.width - 2 * WINDOW_PAD,
+          height: b.height - 2 * WINDOW_PAD,
+        },
+      };
+    });
+const tagPlay = createTagPlay({
+  sprites: tagSprites,
+  size: () => tagSprites()[0]?.rect.width ?? 40,
+  now: () => Date.now(),
+});
+let tagTimer: NodeJS.Timeout | null = null;
+
+const stopTag = (): void => {
+  if (tagTimer) clearInterval(tagTimer);
+  tagTimer = null;
+  tagPlay.stop();
+  tray?.setContextMenu(buildTrayMenu());
+};
+
+const startTag = (): void => {
+  if (tagPlay.active() || store.get('pack') === BUILTIN) return; // the bounce sheep cannot play
+  if (sheepWins.length < 2) setSheepCount(2); // it takes two to play
+  tagPlay.start(Date.now());
+  tagTimer = setInterval(() => {
+    if (!paused) tagPlay.tick();
+  }, TAG_STEP_MS);
+  tray?.setContextMenu(buildTrayMenu());
+};
+
+const toggleTag = (): void => (tagPlay.active() ? stopTag() : startTag());
+
 const toggleKickAbout = (): void => (kickAbout.active() ? stopKickAbout() : startKickAbout());
 
 function buildTrayMenu(): Menu {
@@ -220,6 +264,11 @@ function buildTrayMenu(): Menu {
       label: 'Remove sheep',
       enabled: sheepWins.length > 1,
       click: () => setSheepCount(sheepWins.length - 1),
+    },
+    {
+      label: tagPlay.active() ? 'Stop tag' : 'Play tag',
+      enabled: tagPlay.active() || store.get('pack') !== BUILTIN,
+      click: toggleTag,
     },
     {
       label: kickAbout.active() ? 'Stop kick-about' : 'Start kick-about',
@@ -242,6 +291,7 @@ ipcMain.handle('get-work-areas', () => workAreas());
 ipcMain.handle('load-prefs', () => loadPrefs());
 ipcMain.handle('is-paused', () => paused);
 ipcMain.handle('get-ball', () => kickAbout.state());
+ipcMain.handle('get-tag', (e) => tagPlay.view(e.sender.id));
 const num = (n: unknown): number => (typeof n === 'number' && Number.isFinite(n) ? n : 0);
 ipcMain.on('ball-kick', (_e, k: { vx: number; vy: number }) =>
   kickAbout.kick({ vx: num(k?.vx), vy: num(k?.vy) }),
@@ -284,6 +334,7 @@ ipcMain.on('save-prefs', (_e, prefs: Prefs) => {
   store.set(clean);
   if (packChanged) {
     stopKickAbout(); // the ball is sized to the sprite
+    stopTag(); // the sheep are rebuilt, so the game is over
     for (const w of sheepWins) w.webContents.reload(); // renderers reload the new pack on start
   } else broadcast('prefs-changed', clean);
   setSheepCount(clean.count);
@@ -315,6 +366,9 @@ if (process.env.ESHEEP_TEST === '1') {
         ).length,
       }),
       placeBall: (x: number, y: number) => kickAbout.place(x, y),
+      startTag,
+      stopTag,
+      tagState: () => tagPlay.state(),
     },
   });
 }

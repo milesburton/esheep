@@ -96,6 +96,8 @@ interface ElectronAPI {
   onPause: (cb: () => void) => void;
   onResume: (cb: () => void) => void;
   onPrefsChanged: (cb: (prefs: Prefs) => void) => void;
+  /** This sheep's part in a game of tag (role and who to chase or flee), or null if none is on. */
+  getTag: () => Promise<{ role: 'it' | 'runner'; target: Rect | null; wait: boolean } | null>;
   /** The shared kick-about ball (px, with velocity), or null when there is none. */
   getBall: () => Promise<{ x: number; y: number; size: number; vx: number; vy: number } | null>;
   /** A sheep kicked the ball: the velocity it should take. */
@@ -120,6 +122,8 @@ interface World {
   windows: readonly Rect[];
   /** Sprite rectangles of the other sheep, if there are any (they leap over each other). */
   others?: readonly Rect[];
+  /** Tag, if it is being played: this sheep's role and who to run at (it) or away from (runner). */
+  tag?: { role: 'it' | 'runner'; target: Rect | null; wait: boolean };
   /** The kick-about ball, if there is one (sheep chase and kick it). */
   ball?: Rect;
 }

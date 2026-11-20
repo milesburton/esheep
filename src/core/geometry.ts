@@ -1,3 +1,6 @@
+/** Transparent margin (px) around a classic sprite inside its window. */
+export const WINDOW_PAD = 6;
+
 /** Tolerance (px) for "standing on" / "touching" tests. */
 export const TOL = 3;
 

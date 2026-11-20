@@ -186,3 +186,26 @@ off the displays. `get-windows` and `get-work-areas` are now memoised for 150 ms
 the per-sheep native enumeration cost flagged earlier (`node-window-manager` was called per renderer
 per poll). The app's test seam gained `startKickAbout/stopKickAbout/kickAbout/placeBall`.
 Verified in real Electron under Xvfb; not on a real Windows or macOS desktop.
+
+## 21. Tag and stacking
+
+**Stacking.** The backs of the other sheep (their rectangles, 20% down from the top) are floors in
+the engine, alongside windows: a falling sheep lands on whoever is below, standing on a back counts
+as standing on a window (so window-only transitions apply), and a sheep that walks into another
+rolls to hop onto its back (15% of the meeting roll; 15% greet, 35% leap over). The landing spot
+must be free, which caps a stack at one passenger per sheep per level but still allows towers. A
+passenger falls when the carrier walks off. Measured in the demo (six sheep, three simulated
+minutes): about 10% of the time someone is riding, 106 landings.
+
+**Tag.** `core/tag.ts` is a pure, id-based game: one sheep is "it", it chases the nearest sheep on
+its level, and touching one (same level, no gap) swaps the role; the new "it" counts for 1.5 s so the
+old one can run. `viewFor` tells each sheep its role and target; the engine gets this as `World.tag`.
+Runners flee "it" and hop over it if cornered against the screen edge; while a game is on, ordinary
+greeting and leaping are switched off so they don't undermine it. In the demo the flock runs the
+game directly and "it" gets a red glow. In the app the main process owns the game
+(`main/tagplay.ts`), derives sprite rectangles from the sheep windows' bounds (minus the shared
+`WINDOW_PAD`), swaps on contact every 50 ms, and each sheep window polls `get-tag` for its own view
+and glows red when it is "it". It is unavailable for the bounce sheep, ends when the pack or size
+changes, and starting it adds a second sheep if there is only one.
+
+Not done: a score or teams (item 1 on the roadmap) and tag between sheep on different levels.
