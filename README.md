@@ -81,6 +81,10 @@ windows and an optional second monitor. Grab the sheep, fling it, and watch it l
   scales with it.
 - **A flock**: run 1 to 12 sheep at once (one transparent window each). Add and remove them from the
   tray or Settings, or with the demo's Add sheep button.
+- **Sheep are solid**: they never walk through each other. A sheep meeting another hops over it,
+  climbs onto its back, stops to greet it or turns away, and one that does end up overlapping (landed on,
+  fell off a back, thrown) slides clear. In a crowd of eight, interpenetration went from about 27% of
+  frames (60% during tag) to about 0.1%.
 - **Sheep meet**: a sheep that walks into another at the same level stops to greet it (the pack's
   `sync` animation) or leaps over it and lands on the far side. Sheep standing side by side also
   unlock the pack's `petSide` behaviours. In the app this uses shared window positions.

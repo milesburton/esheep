@@ -758,9 +758,9 @@ describe('playing tag', () => {
     expect(r.state.y).toBe(FLOOR_Y);
   });
 
-  it('does not greet or leap over other sheep while a game is on (tag decides what they do)', () => {
+  it('does not greet or leap over the sheep it is chasing (it must tag it, not jump it)', () => {
     const blocker = rect(100 + CFG.size + 10);
-    const w = world({ others: [blocker], tag: { role: 'it', target: null, wait: false } });
+    const w = world({ others: [blocker], tag: { role: 'it', target: blocker, wait: false } });
     const jumps = Array.from({ length: 12 }, (_, i) => i + 1).filter((seed) => {
       const s = { ...sheepAt(100, true), rng: seed * 7919 };
       return play(s, w, 800).started.includes('jump');
@@ -828,6 +828,169 @@ describe('displays changing under a sheep (a window resized, a monitor unplugged
     const cp = compiled();
     const s = standing(cp, { x: 100, y: 100 });
     expect(() => update(cp, s, { areas: [], windows: [] }, CFG, 16)).not.toThrow();
+  });
+});
+
+describe('sheep are solid to each other (no overlapping)', () => {
+  const base = miniPack();
+  const withJump = (): CompiledPack =>
+    compilePack({
+      ...base,
+      animations: [
+        ...base.animations,
+        anim({ id: 7, name: 'jump', frames: [8, 9, 10, 11], next: [next(1)] }),
+      ],
+    });
+  const S = CFG.size;
+  const box = (x: number, y = FLOOR_Y): Rect => ({ x, y, width: S, height: S });
+  /** The same measure the engine uses: interpenetrating on one level by more than the tolerance. */
+  const overlap = (a: { x: number; y: number }, o: Rect): boolean =>
+    Math.min(a.x + S, o.x + o.width) - Math.max(a.x, o.x) > 3 &&
+    Math.min(a.y + S, o.y + o.height) - Math.max(a.y, o.y) > S * 0.3;
+  const walker = (cp: CompiledPack, seed: number, x: number, flipped: boolean): SheepState => ({
+    ...spawn(cp, world(), CFG, seed).state,
+    x,
+    y: FLOOR_Y,
+    flipped,
+    entered: true,
+  });
+  const seeds = Array.from({ length: 24 }, (_, i) => i + 1);
+
+  it('a sheep that cannot jump is stopped by one in its way, and turns round', () => {
+    const cp = compiled(); // no jump animation: the hard block has to do all the work
+    const blocker = box(400);
+    const w = world({ others: [blocker] });
+    for (const seed of seeds.slice(0, 6)) {
+      let s = walker(cp, seed, 400 - S - 60, true); // facing right, walking at it
+      let turned = false;
+      for (let t = 0; t < 4000; t += 16) {
+        const u = update(cp, s, w, CFG, 16);
+        s = u.state;
+        if (u.started.includes('turn')) turned = true;
+        expect(overlap(s, blocker)).toBe(false);
+      }
+      expect(turned).toBe(true);
+    }
+  });
+
+  it('with every option open it hops, climbs, greets or turns, but never overlaps', () => {
+    const cp = withJump();
+    const blocker = box(400);
+    const w = world({ others: [blocker] });
+    let hops = 0;
+    for (const seed of seeds) {
+      for (const flipped of [true, false]) {
+        let s = walker(cp, seed, flipped ? 400 - S - 80 : 400 + S + 80, flipped);
+        for (let t = 0; t < 3000; t += 16) {
+          const u = update(cp, s, w, CFG, 16);
+          s = u.state;
+          if (u.started.includes('jump')) hops += 1;
+          expect(overlap(s, blocker), `seed ${seed} flipped ${flipped} t ${t}`).toBe(false);
+        }
+      }
+    }
+    expect(hops).toBeGreaterThan(0);
+  });
+
+  const rectOf = (s: SheepState): Rect => ({ x: s.x, y: s.y, width: S, height: S });
+  /** How far two sprites interpenetrate on one level (0 if they do not). */
+  const depth = (a: SheepState, b: SheepState): number =>
+    Math.min(a.y + S, b.y + S) - Math.max(a.y, b.y) > S * 0.3
+      ? Math.max(0, Math.min(a.x + S, b.x + S) - Math.max(a.x, b.x))
+      : 0;
+
+  it('two sheep walking at each other never overlap, however long they play (updated in turn, as the demo does)', () => {
+    const cp = withJump();
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      let a = walker(cp, seed, 100, true);
+      let b = walker(cp, seed + 100, 700, false);
+      for (let t = 0; t < 40_000; t += 16) {
+        a = update(cp, a, world({ others: [rectOf(b)] }), CFG, 16).state;
+        b = update(cp, b, world({ others: [rectOf(a)] }), CFG, 16).state; // sees `a` as already moved
+        expect(depth(a, b), `seed ${seed} t ${t}`).toBeLessThanOrEqual(3);
+      }
+    }
+  });
+
+  it('with stale positions (each sheep sees the other as it was a moment ago, as the app does) overlaps stay shallow and clear at once', () => {
+    const cp = withJump();
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      let a = walker(cp, seed, 100, true);
+      let b = walker(cp, seed + 100, 700, false);
+      let deepFrames = 0;
+      let worst = 0;
+      for (let t = 0; t < 40_000; t += 16) {
+        const [oa, ob] = [rectOf(a), rectOf(b)];
+        a = update(cp, a, world({ others: [ob] }), CFG, 16).state;
+        b = update(cp, b, world({ others: [oa] }), CFG, 16).state;
+        const d = depth(a, b);
+        worst = Math.max(worst, d);
+        if (d > S * 0.25) deepFrames += 1;
+      }
+      expect(worst, `seed ${seed}`).toBeLessThan(S * 0.6);
+      expect(deepFrames, `seed ${seed}`).toBeLessThan(15);
+    }
+  });
+
+  it('a sheep that finds itself overlapping another (landed on it, spawned on it) slides clear', () => {
+    const cp = compiled();
+    const other = box(400);
+    const w = world({ others: [other] });
+    for (const x of [380, 400, 420]) {
+      let s = walker(cp, 3, x, false);
+      s = { ...s, anim: { ...s.anim, border: [] } };
+      for (let t = 0; t < 1500; t += 16) s = update(cp, s, w, CFG, 16).state;
+      expect(overlap(s, other), `start x ${x}`).toBe(false);
+    }
+  });
+
+  it('exactly on top of each other, the pair separates instead of moving as one', () => {
+    const cp = compiled();
+    let a = { ...walker(cp, 1, 400, false), rng: 2 }; // even rng -> pushed right
+    let b = { ...walker(cp, 2, 400, false), rng: 3 }; // odd rng -> pushed left
+    for (let t = 0; t < 1500; t += 16) {
+      const ua = update(
+        cp,
+        a,
+        world({ others: [{ x: b.x, y: b.y, width: S, height: S }] }),
+        CFG,
+        16,
+      );
+      const ub = update(
+        cp,
+        b,
+        world({ others: [{ x: a.x, y: a.y, width: S, height: S }] }),
+        CFG,
+        16,
+      );
+      a = ua.state;
+      b = ub.state;
+    }
+    expect(overlap(a, { x: b.x, y: b.y, width: S, height: S })).toBe(false);
+  });
+
+  it('is not pushed while standing on a back, or while still falling', () => {
+    const cp = compiled();
+    const carrier = box(400);
+    const onBack: SheepState = { ...walker(cp, 1, 400, false), y: carrier.y + S * 0.2 - S };
+    const w = world({ others: [carrier] });
+    const after = update(cp, onBack, w, CFG, 16).state;
+    expect(after.y).toBeCloseTo(onBack.y, 0);
+    expect(Math.abs(after.x - onBack.x)).toBeLessThan(6); // walking, not shoved aside
+  });
+
+  it('a leap never lands on top of a third sheep', () => {
+    const cp = withJump();
+    const blocker = box(300);
+    const third = box(300 + S + 4 + 6); // right where a leap over `blocker` would land
+    const w = world({ others: [blocker, third] });
+    for (const seed of seeds) {
+      let s = walker(cp, seed, 300 - S - 30, true);
+      for (let t = 0; t < 2500; t += 16) {
+        s = update(cp, s, w, CFG, 16).state;
+        expect(overlap(s, blocker) || overlap(s, third), `seed ${seed} t ${t}`).toBe(false);
+      }
+    }
   });
 });
 

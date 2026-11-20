@@ -466,3 +466,56 @@ test('shrinking the browser window keeps every sheep on the (smaller) screen', a
   expect(Math.max(...xs)).toBeGreaterThan(m.right - m.left);
   expect(Math.max(...xs)).toBeLessThanOrEqual(m2.right);
 });
+
+test.describe('sheep never overlap', () => {
+  /** Share of frames in which any two walking sheep interpenetrate (not counting one standing on a back). */
+  const overlapShare = (page: Page, seconds: number): Promise<{ share: number; worst: number }> =>
+    page.evaluate((secs) => {
+      const S = 40;
+      let frames = 0;
+      let bad = 0;
+      let worst = 0;
+      for (let t = 0; t < secs * 1000; t += 16) {
+        window.__demo.step(16);
+        const a = window.__demo.snapshots();
+        frames += 1;
+        let any = false;
+        for (let i = 0; i < a.length; i++)
+          for (let j = i + 1; j < a.length; j++) {
+            if (a[i].mode !== 'walk' || a[j].mode !== 'walk') continue;
+            const dx = Math.min(a[i].x + S, a[j].x + S) - Math.max(a[i].x, a[j].x);
+            const dy = Math.min(a[i].y + S, a[j].y + S) - Math.max(a[i].y, a[j].y);
+            if (dx > 6 && dy > 0.3 * S) {
+              any = true;
+              worst = Math.max(worst, dx);
+            }
+          }
+        if (any) bad += 1;
+      }
+      return { share: bad / frames, worst };
+    }, seconds);
+
+  test('a crowd of eight, with the windows in the way, passes through each other almost never', async ({
+    page,
+  }) => {
+    await open(page, 'manual=1&seed=2');
+    for (let i = 0; i < 7; i++) await page.evaluate(() => window.__demo.add());
+    await page.evaluate(() => window.__demo.step(9000));
+    const r = await overlapShare(page, 90);
+    // Before sheep were solid this was about 27% of frames. What is left are the ~50ms when a
+    // hopping sheep touches down where another has just stepped, and it slides clear.
+    expect(r.share).toBeLessThan(0.01);
+  });
+
+  test('...and not during a game of tag either (the chaser has to stop beside who it catches)', async ({
+    page,
+  }) => {
+    await open(page, 'manual=1&seed=2');
+    for (let i = 0; i < 7; i++) await page.evaluate(() => window.__demo.add());
+    await page.evaluate(() => window.__demo.step(9000));
+    await page.evaluate(() => window.__demo.tagPlay(true));
+    const r = await overlapShare(page, 90);
+    expect(r.share).toBeLessThan(0.015); // was about 60% of frames
+    expect((await page.evaluate(() => window.__demo.tag()))?.tags).toBeGreaterThan(0); // tag still works
+  });
+});

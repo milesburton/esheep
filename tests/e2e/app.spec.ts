@@ -471,6 +471,62 @@ test.describe('self-test (what CI runs against a packaged build)', () => {
   });
 });
 
+test.describe('sheep never overlap (in the real app, where positions arrive a moment late)', () => {
+  test('six sheep wandering for half a minute are almost never on top of each other', async () => {
+    test.setTimeout(120_000);
+    const page = await sheepPage();
+    page.evaluate(() =>
+      window.electronAPI.savePrefs({ speed: 2, sound: false, pack: 'woolly', count: 6, scale: 1 }),
+    );
+    await expect
+      .poll(
+        () =>
+          app.evaluate(
+            ({ BrowserWindow }) =>
+              BrowserWindow.getAllWindows().filter((w) =>
+                w.webContents.getURL().endsWith('/app/index.html'),
+              ).length,
+          ),
+        { timeout: 20_000 },
+      )
+      .toBe(6);
+    await new Promise((r) => setTimeout(r, 12_000)); // let them all land
+    let samples = 0;
+    let overlapping = 0;
+    let worst = 0;
+    for (let i = 0; i < 300; i++) {
+      const rects = await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()
+          .filter((w) => w.webContents.getURL().endsWith('/app/index.html'))
+          .map((w) => w.getBounds()),
+      );
+      samples += 1;
+      let any = false;
+      for (let a = 0; a < rects.length; a++)
+        for (let b = a + 1; b < rects.length; b++) {
+          // The sprite is the 40px square in the middle of each 52px window.
+          const dx =
+            Math.min(rects[a].x + 46, rects[b].x + 46) - Math.max(rects[a].x + 6, rects[b].x + 6);
+          const dy =
+            Math.min(rects[a].y + 46, rects[b].y + 46) - Math.max(rects[a].y + 6, rects[b].y + 6);
+          if (dx > 6 && dy > 12) {
+            any = true;
+            worst = Math.max(worst, dx);
+          }
+        }
+      if (any) overlapping += 1;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    console.log(
+      `overlap in the app: ${overlapping}/${samples} samples (${((100 * overlapping) / samples).toFixed(1)}%), worst ${worst}px`,
+    );
+    expect(samples).toBeGreaterThan(250);
+    // Positions arrive up to ~50ms late between windows, so allow a little more than in the demo.
+    expect(overlapping / samples).toBeLessThan(0.05);
+    expect(worst).toBeLessThan(40);
+  });
+});
+
 test.describe('several sheep', () => {
   type Seam = {
     addSheep(): void;

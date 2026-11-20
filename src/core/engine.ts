@@ -296,6 +296,16 @@ const backs = (world: World, cfg: Config): Rect[] =>
     height: o.height - cfg.size * BACK_DEPTH,
   }));
 
+/** Two sprites overlap by more than this share of their height before they count as overlapping. */
+const SHEEP_OVERLAP_V = 0.3;
+
+/** Do two sprites really overlap: interpenetrating on one level (touching, or standing on a back, is fine)? */
+const overlapsSheep = (x: number, y: number, S: number, o: Rect): boolean => {
+  const dx = Math.min(x + S, o.x + o.width) - Math.max(x, o.x);
+  const dy = Math.min(y + S, o.y + o.height) - Math.max(y, o.y);
+  return dx > TOL && dy > S * SHEEP_OVERLAP_V;
+};
+
 /** Chance per tick of climbing onto the back of a sheep in the way (a share of the meeting roll). */
 const CLIMB_CHANCE = 0.15;
 
@@ -317,6 +327,20 @@ const otherAhead = (s: SheepState, dir: number, world: World, cfg: Config): Rect
     }) ?? null
   );
 };
+
+/**
+ * Which of two meeting sheep is the one allowed to hop over the other. A pure function of the pair's
+ * positions (their sum and order), so both sheep agree without talking, yet it varies from meeting to
+ * meeting: sometimes the left-hand sheep jumps, sometimes the right-hand one.
+ */
+const mayHop = (s: SheepState, other: Rect, cfg: Config): boolean => {
+  const leftHops = Math.floor((s.x + other.x) / (cfg.size * 2)) % 2 === 0;
+  return s.x <= other.x === leftHops;
+};
+
+/** Begin a hop and apply its first frame at once, so a neighbour sees the sheep airborne straight away. */
+const takeOff = (s: SheepState, hop: Hop, world: World, cfg: Config): SheepState =>
+  hopStep({ ...s, hop }, hop, world, cfg).state;
 
 /** Where a hop onto `other`'s back would land (centred on it), or null if something is already there. */
 const climbTarget = (s: SheepState, other: Rect, world: World, cfg: Config): Hop | null => {
@@ -347,7 +371,8 @@ const leapTarget = (
         overlapsX(S, x1, a) &&
         onScreenLower(world.areas, S, x1, s.y),
     );
-  return supported ? { x0: s.x, y0: s.y, x1, y1: s.y, arc: S * 1.3 } : null;
+  const free = !(world.others ?? []).some((o) => overlapsSheep(x1, s.y, S, o)); // nobody is already there
+  return supported && free ? { x0: s.x, y0: s.y, x1, y1: s.y, arc: S * 1.3 } : null;
 };
 
 /** Animations a sheep can be pulled out of to chase the ball (it won't wake from a sleep for it). */
@@ -488,6 +513,12 @@ const move = (
       (w) => nx + S > w.x && nx < w.x + w.width && s.y + S > w.y + TOL * 2 && s.y < w.y + w.height,
     );
     if (wall) return { x: dx > 0 ? wall.x - S : wall.x + wall.width, hit: true };
+    // Sheep are solid to each other: a sheep may not walk *into* another (one that is already
+    // overlapping may still walk out). The sheep has to hop, climb or turn away instead.
+    const sheep = (world.others ?? []).find(
+      (o) => overlapsSheep(nx, s.y, S, o) && !overlapsSheep(s.x, s.y, S, o),
+    );
+    if (sheep) return { x: dx > 0 ? sheep.x - S : sheep.x + sheep.width, hit: true };
     if (s.entered && !onScreenLower(world.areas, S, nx, s.y)) {
       return { x: farthestValid(s.x, nx, (v) => onScreenLower(world.areas, S, v, s.y)), hit: true };
     }
@@ -514,24 +545,54 @@ const move = (
     return { y: ny, hit: false };
   })();
 
+  // A move may not *create* an overlap either (a sheep falling into the side of one it was standing
+  // on): slide it out sideways, to whichever side is clear, in the same step.
+  const clash = (world.others ?? []).find(
+    (o) => overlapsSheep(afterX.x, afterY.y, S, o) && !overlapsSheep(s.x, s.y, S, o),
+  );
+  const clearX = ((): number => {
+    if (!clash) return afterX.x;
+    const toRight = afterX.x + S / 2 >= clash.x + clash.width / 2;
+    for (const right of [toRight, !toRight]) {
+      const x = right ? clash.x + clash.width : clash.x - S;
+      if (
+        onScreenLower(world.areas, S, x, afterY.y) &&
+        !world.windows.some((w) => intersects(x, afterY.y, S, w) && afterY.y + S > w.y + TOL * 2)
+      )
+        return x;
+    }
+    return afterX.x;
+  })();
+
   // "Entered" = lower body fully on a display (a spawn may start off to the side or above).
-  const entered = s.entered || onScreenLower(world.areas, S, afterX.x, afterY.y);
-  return { state: { ...s, x: afterX.x, y: afterY.y, entered }, hit: afterX.hit || afterY.hit };
+  const entered = s.entered || onScreenLower(world.areas, S, clearX, afterY.y);
+  return { state: { ...s, x: clearX, y: afterY.y, entered }, hit: afterX.hit || afterY.hit };
 };
 
 /** Follow an arc from `hop`'s start to its end over the animation, landing exactly on the target. */
-const hopStep = (s: SheepState, hop: Hop, cfg: Config): { state: SheepState; hit: boolean } => {
+const hopStep = (
+  s: SheepState,
+  hop: Hop,
+  world: World,
+  cfg: Config,
+): { state: SheepState; hit: boolean } => {
+  const S = cfg.size;
   const t = Math.min(1, (s.step + 1) / Math.max(1, s.total));
-  const arc = Math.sin(Math.PI * t) * (hop.arc ?? cfg.size * 0.8);
+  // The lift comes early (square root of the sine): a sheep leaping a neighbour is well clear of it
+  // before it has moved sideways over it.
+  const arc = Math.sqrt(Math.sin(Math.PI * t)) * (hop.arc ?? S * 0.8);
   const done = t >= 1;
+  const x = done ? hop.x1 : lerp(hop.x0, hop.x1, t);
+  const y = done ? hop.y1 : lerp(hop.y0, hop.y1, t) - arc;
+  // Neighbours keep walking while we are in the air: if one has moved under the flight path or into
+  // the landing spot, drift past it (in the direction of travel) rather than come down on top of it.
+  const under = (world.others ?? []).find((o) => overlapsSheep(x, y, S, o));
+  const goRight = hop.x1 >= hop.x0;
+  const clearX = under ? (goRight ? under.x + under.width : under.x - S) : x;
+  const safeX = onScreenLower(world.areas, S, clearX, y) ? clearX : x;
   return {
     hit: false,
-    state: {
-      ...s,
-      x: done ? hop.x1 : lerp(hop.x0, hop.x1, t),
-      y: done ? hop.y1 : lerp(hop.y0, hop.y1, t) - arc,
-      hop: done ? null : s.hop,
-    },
+    state: { ...s, x: safeX, y, hop: done ? null : s.hop },
   };
 };
 
@@ -649,6 +710,34 @@ const rescue = (s: SheepState, world: World, cfg: Config): SheepState => {
   return at.x === s.x && at.y === s.y ? s : { ...s, ...at, hop: null };
 };
 
+/** Least a sheep is nudged clear of an overlapping neighbour per update (px); deeper overlaps clear faster. */
+const MIN_PUSH = 6;
+
+/**
+ * Safety net for overlaps that no walking decision caused: a sheep that landed on another, spawned
+ * on one, was thrown or dropped onto one, fell off a back that walked away, or had one land on it.
+ * Overlapping sheep each slide away from the other until they are clear. (A sheep landing squarely
+ * on a back is not overlapping: its feet stop at the back, 20% down, which is inside the tolerance.)
+ */
+const separate = (s: SheepState, world: World, cfg: Config): SheepState => {
+  const S = cfg.size;
+  const other = s.hop ? undefined : (world.others ?? []).find((o) => overlapsSheep(s.x, s.y, S, o));
+  if (!other) return s;
+  const dx = s.x + S / 2 - (other.x + other.width / 2);
+  // Exactly on top of each other: pick opposite directions by luck, so the pair does not move as one.
+  const dir = Math.abs(dx) < 0.5 ? (s.rng % 2 === 0 ? 1 : -1) : Math.sign(dx);
+  const depth = dir > 0 ? other.x + other.width - s.x : s.x + S - other.x;
+  const fits = (x: number): boolean =>
+    onScreenLower(world.areas, S, x, s.y) &&
+    !world.windows.some((w) => intersects(x, s.y, S, w) && s.y + S > w.y + TOL * 2);
+  for (const d of [dir, -dir]) {
+    // Half the remaining depth (at least MIN_PUSH): a deep overlap clears in a few frames, smoothly.
+    const x = s.x + d * Math.min(depth, Math.max(MIN_PUSH, depth / 2));
+    if (fits(x)) return { ...s, x };
+  }
+  return s;
+};
+
 /** Advance simulated time by `dtMs`. */
 export const update = (
   cp: CompiledPack,
@@ -660,8 +749,12 @@ export const update = (
   if (state.mode.kind === 'held') return { state: loopFrames(state, cfg, dtMs), started: [] };
   if (state.mode.kind === 'thrown') return updateThrown(cp, state, state.mode, world, cfg, dtMs);
 
-  let s: SheepState = rescue(
-    { ...state, acc: state.acc + dtMs, kickCd: Math.max(0, state.kickCd - dtMs) },
+  let s: SheepState = separate(
+    rescue(
+      { ...state, acc: state.acc + dtMs, kickCd: Math.max(0, state.kickCd - dtMs) },
+      world,
+      cfg,
+    ),
     world,
     cfg,
   );
@@ -688,7 +781,7 @@ export const update = (
       opacity: lerp(s.p0.a, s.p1.a, t),
     };
     const moved = s.hop
-      ? hopStep(base, s.hop, cfg)
+      ? hopStep(base, s.hop, world, cfg)
       : move(
           base,
           lerp(s.p0.x, s.p1.x, t) * cfg.scale * dir,
@@ -799,7 +892,9 @@ export const update = (
     }
     if (heading !== 0 && !s.hop && (flags.taskbar || flags.window)) {
       const jump = cp.byName.get('jump');
-      const meet = tag ? null : otherAhead(s, heading, world, cfg); // no greeting or leaping mid-game
+      // Greet / climb / leap (or, failing those, the hard block turns us round): never walk through.
+      // A sheep steering for or from "it" in a game of tag leaves that to the game.
+      const meet = tag?.target ? null : otherAhead(s, heading, world, cfg);
       if (meet) {
         const [pick, next] = nextRandom(s.rng);
         s = { ...s, rng: next };
@@ -808,16 +903,19 @@ export const update = (
           restart(greet.id, 1); // stop and greet: a sheep meeting a sheep
           continue;
         }
-        const climb = jump ? climbTarget(s, meet, world, cfg) : null;
+        // Only one of a pair may hop over the other (two sheep leaping over each other at once would
+        // pass through each other in mid-air). Both work out the same answer from the pair's positions.
+        const myHop = jump && mayHop(s, meet, cfg);
+        const climb = myHop ? climbTarget(s, meet, world, cfg) : null;
         if (jump && climb && pick >= GREET_CHANCE && pick < GREET_CHANCE + CLIMB_CHANCE) {
           restart(jump.id, 1); // hop up onto its back
-          s = { ...s, hop: climb };
+          s = takeOff(s, climb, world, cfg);
           continue;
         }
-        const leap = jump ? leapTarget(s, heading, meet, world, cfg) : null;
+        const leap = myHop ? leapTarget(s, heading, meet, world, cfg) : null;
         if (jump && leap && pick < GREET_CHANCE + CLIMB_CHANCE + LEAP_CHANCE) {
           restart(jump.id, 1);
-          s = { ...s, hop: leap };
+          s = takeOff(s, leap, world, cfg);
           continue;
         }
       }

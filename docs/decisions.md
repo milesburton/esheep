@@ -242,3 +242,29 @@ Releasing, as done for v0.1.0 (and two pitfalls): bump `version` in `package.jso
 bot's commits all carry that marker (tag the code commit, not the bot's commit after it). The release
 job has no checkout, so `gh` needs `GH_REPO`. A run uses the workflow file as it was at the tag, so a
 workflow fix means moving the tag (safe only while no release exists for it).
+
+## 24. Sheep are solid to each other
+
+Measured first: with eight sheep and the windows visible, two sheep interpenetrated by a full sprite in
+about 27% of frames (about 60% during tag), because meeting another sheep only _sometimes_ triggered a
+hop, greeting or climb and otherwise they walked straight through. Four layers fix it:
+
+1. **Hard block** in `move()`: a sheep may not walk (or fall) _into_ an overlap (touching is fine;
+   standing on a back, 20% down, is fine). It stops beside the other and the pack's border response
+   turns it round. A sheep already overlapping may still walk out.
+2. **Always decide**: meeting resolves into greet, climb, leap, or the block turning it away.
+3. **Only one hops**: if both sheep leapt over each other at once they passed through each other in
+   mid-air (found by a long two-sheep test). `mayHop` decides from a symmetric function of the pair's
+   positions, so both sheep agree without talking, and it varies from meeting to meeting. Takeoff also
+   applies its first frame immediately so the other sheep sees it airborne. A sheep steering for or
+   from "it" in tag leaves the other to the game.
+4. **Push-out and flight avoidance**: `separate()` slides overlapping sheep apart (half the remaining
+   depth, at least 6 px, per update), `hopStep` drifts past anyone who moved under the flight path or
+   into the landing spot, and `move()` slides a sheep that would fall into another's side out sideways.
+
+Result in the demo: about 0.1% of frames (25-28% before; tag 0.1-0.6%, was 58-66%), and tag got
+slightly faster (70-101 tags per ten minutes, was 57-71) because "it" now stops beside its target. In
+the real app, where each sheep sees the others up to 50 ms late, 0.3% of samples overlap with a worst
+case of 7-10 px. The remainder are the ~50 ms when a hopping sheep touches down where another has just
+stepped and the standing one slides clear. Tests: unit (in-turn and stale-position models over six
+seeds and 40 simulated seconds) and real-browser and real-Electron e2e with measured ceilings.
