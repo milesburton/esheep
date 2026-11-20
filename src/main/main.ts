@@ -63,7 +63,9 @@ const createSheepWindow = (): void => {
   const win = new BrowserWindow({
     width: SIZE,
     height: SIZE,
-    x: area.x + Math.round(area.width / 2),
+    // Spread new windows out, so a flock does not start stacked in one spot before each renderer
+    // places its own sheep.
+    x: area.x + Math.round(area.width / 2) + ((sheepWins.length * 137) % 400) - 200,
     y: area.y + Math.round(area.height / 2),
     transparent: true,
     frame: false,
