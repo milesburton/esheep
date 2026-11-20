@@ -13,7 +13,7 @@ TypeScript, with a functional, fully tested core that also powers a
 [![e2e tests: 49/49 passing](https://img.shields.io/badge/e2e_tests-49%2F49_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
 [![line coverage: 99.2%](https://img.shields.io/badge/line_coverage-99.2%25-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
 [![branch coverage: 95.7%](https://img.shields.io/badge/branch_coverage-95.7%25-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
-![source: 3,370 lines TypeScript](https://img.shields.io/badge/source-3%2C370_lines_TypeScript-blue)
+![source: 3,372 lines TypeScript](https://img.shields.io/badge/source-3%2C372_lines_TypeScript-blue)
 [![demo size: 256 kB](https://img.shields.io/badge/demo_size-256_kB-blue)](https://milesburton.github.io/esheep/)
 
 <!-- metrics:end -->
