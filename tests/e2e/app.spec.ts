@@ -74,10 +74,15 @@ test.describe('sheep window', () => {
     expect(surface.hasProcess).toBe('undefined');
     expect(surface.api).toEqual(
       [
+        'ballGrab',
+        'ballMove',
+        'ballRelease',
+        'getBall',
         'getOtherSheep',
         'getWindows',
         'getWorkAreas',
         'isPaused',
+        'kickBall',
         'listPacks',
         'loadPack',
         'loadPrefs',
@@ -123,20 +128,41 @@ test.describe('tray menu and pause', () => {
 
   test('offers Pause, Settings and Quit', async () => {
     await sheepPage();
-    expect(await labels()).toEqual(['Pause', 'Add sheep', 'Remove sheep', 'Settings…', 'Quit']);
+    expect(await labels()).toEqual([
+      'Pause',
+      'Add sheep',
+      'Remove sheep',
+      'Start kick-about',
+      'Settings…',
+      'Quit',
+    ]);
   });
 
   test('Pause freezes the sheep and Resume releases it', async () => {
     await sheepPage();
     await toggle();
-    expect(await labels()).toEqual(['Resume', 'Add sheep', 'Remove sheep', 'Settings…', 'Quit']);
+    expect(await labels()).toEqual([
+      'Resume',
+      'Add sheep',
+      'Remove sheep',
+      'Start kick-about',
+      'Settings…',
+      'Quit',
+    ]);
     await new Promise((r) => setTimeout(r, 300)); // let the pause message land
     const frozen = await sheepBounds();
     await new Promise((r) => setTimeout(r, 600));
     expect(await sheepBounds()).toEqual(frozen);
 
     await toggle();
-    expect(await labels()).toEqual(['Pause', 'Add sheep', 'Remove sheep', 'Settings…', 'Quit']);
+    expect(await labels()).toEqual([
+      'Pause',
+      'Add sheep',
+      'Remove sheep',
+      'Start kick-about',
+      'Settings…',
+      'Quit',
+    ]);
     await expect.poll(async () => (await sheepBounds()).x, { timeout: 5000 }).not.toBe(frozen.x);
   });
 });
@@ -217,6 +243,133 @@ test.describe('settings', () => {
     // margin on every side (52px), so the feet are 46px below the window's top.
     await expect.poll(async () => (await sheepBounds()).y + 46, { timeout: 15_000 }).toBe(bottom);
     expect(await sheepBounds()).toMatchObject({ width: 52, height: 52 });
+  });
+});
+
+test.describe('kick-about', () => {
+  type BallInfo = {
+    active: boolean;
+    held: boolean;
+    kicks: number;
+    windows: number;
+    ball: { x: number; y: number; size: number; vx: number; vy: number } | null;
+  };
+  type Seam = {
+    startKickAbout(): void;
+    stopKickAbout(): void;
+    kickAbout(): BallInfo;
+    placeBall(x: number, y: number): void;
+    trayLabels(): string[];
+  };
+  const seam = <T>(fn: (s: Seam) => T): Promise<T> =>
+    app.evaluate(
+      (_e, src) =>
+        new Function('s', `return (${src})(s)`)(
+          (globalThis as unknown as { __esheep: Seam }).__esheep,
+        ) as unknown,
+      fn.toString(),
+    ) as Promise<T>;
+  const info = (): Promise<BallInfo> => seam((s) => s.kickAbout());
+  const floor = async (page: Page): Promise<number> =>
+    page.evaluate(async () => {
+      const [primary] = await window.electronAPI.getWorkAreas();
+      return primary.y + primary.height;
+    });
+  const ballPage = async (): Promise<Page> => {
+    const existing = app.windows().find((w) => w.url().endsWith('/app/ball.html'));
+    return (
+      existing ??
+      app.waitForEvent('window', { predicate: (w) => w.url().endsWith('/app/ball.html') })
+    );
+  };
+
+  test('the tray offers it, and a ball window appears, falls and settles on the floor', async () => {
+    const first = await sheepPage();
+    expect(await seam((s) => s.trayLabels())).toContain('Start kick-about');
+    expect((await info()).active).toBe(false);
+    await seam((s) => s.startKickAbout());
+    expect(await seam((s) => s.trayLabels())).toContain('Stop kick-about');
+    await ballPage();
+    const bottom = await floor(first);
+    await expect.poll(async () => (await info()).ball?.y, { timeout: 20_000 }).toBe(bottom - 14);
+    expect((await info()).windows).toBe(1);
+    // The window is the ball: 14px, sitting where the simulation says.
+    const win = await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((w) => w.webContents.getURL().endsWith('/app/ball.html'))
+        ?.getBounds(),
+    );
+    expect(win).toMatchObject({ width: 14, height: 14 });
+    await seam((s) => s.stopKickAbout());
+    expect((await info()).windows).toBe(0);
+    expect(await seam((s) => s.trayLabels())).toContain('Start kick-about');
+  });
+
+  test('sheep run at the ball and kick it', async () => {
+    test.setTimeout(120_000);
+    const page = await sheepPage();
+    // Classic sheep (the bounce sheep ignores the ball), two of them so a flock is involved.
+    page.evaluate(() =>
+      window.electronAPI.savePrefs({ speed: 1, sound: false, pack: 'woolly', count: 2, scale: 1 }),
+    );
+    const bottom = await floor(page);
+    await expect.poll(async () => (await sheepBounds()).y + 46, { timeout: 25_000 }).toBe(bottom);
+    await seam((s) => s.startKickAbout());
+    await ballPage();
+    // Sheep are random (one may be asleep, which deliberately ignores the ball), so keep putting the
+    // ball on the floor just ahead of the first sheep until somebody kicks it.
+    const place = async (): Promise<void> => {
+      const sprite = await sheepBounds(); // 52px window: 6px margin around the 40px sprite
+      await app.evaluate(
+        (_e, [x, y]) =>
+          (
+            globalThis as unknown as { __esheep: { placeBall(x: number, y: number): void } }
+          ).__esheep.placeBall(x, y),
+        [sprite.x + 6 + 40 + 5, bottom - 14],
+      );
+    };
+    await expect
+      .poll(
+        async () => {
+          if ((await info()).kicks === 0) await place();
+          await page.waitForTimeout(2000);
+          return (await info()).kicks;
+        },
+        { timeout: 90_000, intervals: [0] },
+      )
+      .toBeGreaterThan(0);
+  });
+
+  test('you can pick the ball up with the mouse and throw it', async () => {
+    const first = await sheepPage();
+    await seam((s) => s.startKickAbout());
+    const page = await ballPage();
+    const bottom = await floor(first);
+    await expect.poll(async () => (await info()).ball?.y, { timeout: 20_000 }).toBe(bottom - 14);
+    await page.mouse.move(7, 7);
+    await page.mouse.down();
+    await expect.poll(async () => (await info()).held).toBe(true);
+    await page.mouse.move(40, -20, { steps: 4 });
+    await page.mouse.move(120, -90, { steps: 4 });
+    const carried = (await info()).ball;
+    expect(carried?.vx).toBe(0); // frozen under the pointer while held
+    expect(carried?.y).toBeLessThan(bottom - 60);
+    await page.mouse.up();
+    await expect.poll(async () => (await info()).held).toBe(false);
+    // Released: it is back under physics and settles on the floor again.
+    await expect.poll(async () => (await info()).ball?.y, { timeout: 20_000 }).toBe(bottom - 14);
+  });
+
+  test('changing the sprite size or pack ends the kick-about (the ball is sized to the sprite)', async () => {
+    const page = await sheepPage();
+    await seam((s) => s.startKickAbout());
+    await ballPage();
+    expect((await info()).active).toBe(true);
+    page.evaluate(() =>
+      window.electronAPI.savePrefs({ speed: 1, sound: false, pack: 'builtin', count: 1, scale: 2 }),
+    );
+    await expect.poll(async () => (await info()).active).toBe(false);
+    await expect.poll(async () => (await info()).windows).toBe(0);
   });
 });
 

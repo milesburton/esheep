@@ -102,7 +102,7 @@ The Electron end-to-end tests need a display. On a headless Linux box run them u
 
 ## Using it
 
-- **Tray icon**: Pause / Resume, Add sheep, Remove sheep, Settings…, Quit.
+- **Tray icon**: Pause / Resume, Add sheep, Remove sheep, Start / Stop kick-about, Settings…, Quit.
 - **Grab**: press on the sheep and hold. It dangles. Move to carry it.
 - **Drop**: release while the pointer is still, and it falls under gravity.
 - **Toss**: release mid-flick. Throw speed is capped at 3,200 px/s.

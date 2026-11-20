@@ -168,3 +168,21 @@ into the nearest display first (`clampIntoAreas`), and the held ball is clamped 
 Not done: the Electron app. There each sheep is its own window and renderer, so a shared ball needs
 the main-process simulation discussed in the design notes (ball as its own transparent window,
 opt-in, time-limited). Scoring and teams are also not built.
+
+## 20. Kick-about in the app: the ball lives in the main process
+
+Each sheep is its own window and renderer, so the ball cannot live in any one of them. The main
+process owns it (`src/main/kickabout.ts`, a small controller with injected world, size and areas so
+it is unit-tested without Electron), steps it every 16 ms with the same pure `core/ball` physics the
+demo uses, and moves a dedicated ball window (`ball.html`, a 14 px square times the sprite scale,
+click-through is left off because the window _is_ the ball). Sheep renderers poll `get-ball` with
+the other-sheep poll (50 ms) and extrapolate the ball by its velocity between polls (capped at
+100 ms); a kick is sent back as `ball-kick`. The ball window reports pointer events in screen
+coordinates (`ball-grab/move/release`), so you can carry and throw it with the shared pointer code.
+
+Guard rails, since a ball bouncing over your work gets old fast: it is opt-in (tray item), ends by
+itself after two minutes, is stopped by changing the pack or size, and a held ball cannot be dragged
+off the displays. `get-windows` and `get-work-areas` are now memoised for 150 ms, which also removes
+the per-sheep native enumeration cost flagged earlier (`node-window-manager` was called per renderer
+per poll). The app's test seam gained `startKickAbout/stopKickAbout/kickAbout/placeBall`.
+Verified in real Electron under Xvfb; not on a real Windows or macOS desktop.

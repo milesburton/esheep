@@ -28,6 +28,9 @@ const run = async (): Promise<void> => {
   let windows: Rect[] = [];
   /** Other sheep windows (their sprites sit centred in them), refreshed often so leaps look right. */
   let others: Rect[] = [];
+  /** The shared kick-about ball, as last polled (extrapolated by its velocity between polls). */
+  let ball: { x: number; y: number; size: number; vx: number; vy: number } | null = null;
+  let ballAt = 0;
 
   const sheet =
     pack.kind === 'classic'
@@ -50,6 +53,17 @@ const run = async (): Promise<void> => {
     pixelRatio: window.devicePixelRatio,
     getPrefs: () => prefs,
     getOthers: () => others,
+    getBall: () => {
+      if (!ball) return null;
+      const age = Math.min((performance.now() - ballAt) / 1000, 0.1);
+      return {
+        x: ball.x + ball.vx * age,
+        y: ball.y + ball.vy * age,
+        width: ball.size,
+        height: ball.size,
+      };
+    },
+    onKick: (k) => api.kickBall(k),
     place: (x, y) => api.moveWindow(x, y),
     onSound: beep,
   });
@@ -68,6 +82,8 @@ const run = async (): Promise<void> => {
 
   const OTHERS_MS = 50;
   setInterval(async () => {
+    ball = await api.getBall();
+    ballAt = performance.now();
     const mine = live.stage?.rect();
     if (!mine) return;
     others = (await api.getOtherSheep()).map((b) => ({

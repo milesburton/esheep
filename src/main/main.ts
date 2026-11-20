@@ -1,7 +1,9 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, Tray } from 'electron';
 import Store from 'electron-store';
 import * as path from 'path';
+import { obstaclesFrom } from '../core/geometry';
 import { enableAutoLaunch } from './autolaunch';
+import { createKickAbout } from './kickabout';
 import { BUILTIN, listPacks, loadPack } from './pack';
 import { createWindowSource, type NativeWindow, type WindowManagerLike } from './windows';
 
@@ -119,6 +121,93 @@ const togglePause = (): void => {
   tray?.setContextMenu(buildTrayMenu());
 };
 
+// Every sheep renderer polls these, and the ball loop needs them at 60 Hz, so they are memoised briefly.
+const CACHE_MS = 150;
+const memo = <T>(read: () => T): (() => T) => {
+  let hit: { at: number; value: T } | null = null;
+  return () => {
+    const now = Date.now();
+    if (!hit || now - hit.at > CACHE_MS) hit = { at: now, value: read() };
+    return hit.value;
+  };
+};
+const workAreas = memo((): Rect[] => {
+  const primaryId = screen.getPrimaryDisplay().id;
+  return screen
+    .getAllDisplays()
+    .sort((a, b) => Number(b.id === primaryId) - Number(a.id === primaryId))
+    .map((d) => d.workArea);
+});
+const windowList = memo(() => getVisibleWindows());
+// ---- kick-about: one shared ball, simulated here and shown in its own small window ------------------
+const BALL_BASE = 14;
+const BALL_STEP_MS = 16;
+const ballSize = (): number => Math.round(BALL_BASE * store.get('scale'));
+const kickAbout = createKickAbout({
+  size: ballSize,
+  world: () => ({ areas: workAreas(), windows: obstaclesFrom(windowList(), workAreas()) }),
+  areas: workAreas,
+  speed: () => store.get('speed'),
+});
+let ballWin: BrowserWindow | null = null;
+let ballTimer: NodeJS.Timeout | null = null;
+
+const stopKickAbout = (): void => {
+  if (ballTimer) clearInterval(ballTimer);
+  ballTimer = null;
+  kickAbout.stop();
+  const w = ballWin;
+  ballWin = null;
+  if (w && !w.isDestroyed()) w.destroy();
+  tray?.setContextMenu(buildTrayMenu());
+};
+
+const createBallWindow = (): BrowserWindow => {
+  const s = kickAbout.state();
+  const size = ballSize();
+  const win = new BrowserWindow({
+    width: size,
+    height: size,
+    x: Math.round(s?.x ?? 0),
+    y: Math.round(s?.y ?? 0),
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false,
+    hasShadow: false,
+    resizable: false,
+    webPreferences: { preload, contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  win.setAlwaysOnTop(true, 'screen-saver');
+  void win.loadFile(page('ball.html'));
+  win.on('closed', () => {
+    if (ballWin === win) stopKickAbout();
+  });
+  return win;
+};
+
+const startKickAbout = (): void => {
+  if (kickAbout.active()) return;
+  kickAbout.start();
+  ballWin = createBallWindow();
+  let last = Date.now();
+  ballTimer = setInterval(() => {
+    const now = Date.now();
+    const dt = now - last;
+    last = now;
+    if (paused) return;
+    if (!kickAbout.tick(dt)) return stopKickAbout(); // time limit reached
+    const b = kickAbout.state();
+    if (b && ballWin && !ballWin.isDestroyed()) {
+      ballWin.setBounds({ x: Math.round(b.x), y: Math.round(b.y), width: b.size, height: b.size });
+    }
+  }, BALL_STEP_MS);
+  tray?.setContextMenu(buildTrayMenu());
+};
+
+const toggleKickAbout = (): void => (kickAbout.active() ? stopKickAbout() : startKickAbout());
+
 function buildTrayMenu(): Menu {
   return Menu.buildFromTemplate([
     { label: paused ? 'Resume' : 'Pause', click: togglePause },
@@ -132,6 +221,10 @@ function buildTrayMenu(): Menu {
       enabled: sheepWins.length > 1,
       click: () => setSheepCount(sheepWins.length - 1),
     },
+    {
+      label: kickAbout.active() ? 'Stop kick-about' : 'Start kick-about',
+      click: toggleKickAbout,
+    },
     { label: 'Settings…', click: openSettings },
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() },
@@ -144,16 +237,18 @@ const createTray = (): void => {
   tray.setContextMenu(buildTrayMenu());
 };
 
-ipcMain.handle('get-windows', () => getVisibleWindows());
-ipcMain.handle('get-work-areas', () => {
-  const primaryId = screen.getPrimaryDisplay().id;
-  return screen
-    .getAllDisplays()
-    .sort((a, b) => Number(b.id === primaryId) - Number(a.id === primaryId))
-    .map((d) => d.workArea);
-});
+ipcMain.handle('get-windows', () => windowList());
+ipcMain.handle('get-work-areas', () => workAreas());
 ipcMain.handle('load-prefs', () => loadPrefs());
 ipcMain.handle('is-paused', () => paused);
+ipcMain.handle('get-ball', () => kickAbout.state());
+const num = (n: unknown): number => (typeof n === 'number' && Number.isFinite(n) ? n : 0);
+ipcMain.on('ball-kick', (_e, k: { vx: number; vy: number }) =>
+  kickAbout.kick({ vx: num(k?.vx), vy: num(k?.vy) }),
+);
+ipcMain.on('ball-grab', () => kickAbout.grab());
+ipcMain.on('ball-move', (_e, x: number, y: number) => kickAbout.move(num(x), num(y)));
+ipcMain.on('ball-release', (_e, vx: number, vy: number) => kickAbout.release(num(vx), num(vy)));
 ipcMain.handle('get-other-sheep', (e) =>
   sheepWins.filter((w) => !w.isDestroyed() && w.webContents !== e.sender).map((w) => w.getBounds()),
 );
@@ -187,9 +282,10 @@ ipcMain.on('save-prefs', (_e, prefs: Prefs) => {
   // A new pack or size needs the sheep rebuilt, which a renderer reload does.
   const packChanged = clean.pack !== store.get('pack') || clean.scale !== store.get('scale');
   store.set(clean);
-  if (packChanged)
+  if (packChanged) {
+    stopKickAbout(); // the ball is sized to the sprite
     for (const w of sheepWins) w.webContents.reload(); // renderers reload the new pack on start
-  else broadcast('prefs-changed', clean);
+  } else broadcast('prefs-changed', clean);
   setSheepCount(clean.count);
 });
 
@@ -207,6 +303,18 @@ if (process.env.ESHEEP_TEST === '1') {
       sheepCount: () => sheepWins.length,
       addSheep: () => setSheepCount(sheepWins.length + 1),
       removeSheep: () => setSheepCount(sheepWins.length - 1),
+      startKickAbout,
+      stopKickAbout,
+      kickAbout: () => ({
+        active: kickAbout.active(),
+        held: kickAbout.held(),
+        kicks: kickAbout.kicks(),
+        ball: kickAbout.state(),
+        windows: BrowserWindow.getAllWindows().filter((w) =>
+          w.webContents.getURL().endsWith('/app/ball.html'),
+        ).length,
+      }),
+      placeBall: (x: number, y: number) => kickAbout.place(x, y),
     },
   });
 }

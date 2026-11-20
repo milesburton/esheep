@@ -96,6 +96,14 @@ interface ElectronAPI {
   onPause: (cb: () => void) => void;
   onResume: (cb: () => void) => void;
   onPrefsChanged: (cb: (prefs: Prefs) => void) => void;
+  /** The shared kick-about ball (px, with velocity), or null when there is none. */
+  getBall: () => Promise<{ x: number; y: number; size: number; vx: number; vy: number } | null>;
+  /** A sheep kicked the ball: the velocity it should take. */
+  kickBall: (kick: { vx: number; vy: number }) => void;
+  /** The ball window's pointer events (pick up, carry to a screen position, throw). */
+  ballGrab: () => void;
+  ballMove: (x: number, y: number) => void;
+  ballRelease: (vx: number, vy: number) => void;
   /** Window bounds of every other sheep window. */
   getOtherSheep: () => Promise<Rect[]>;
 }
