@@ -774,6 +774,63 @@ describe('playing tag', () => {
   });
 });
 
+describe('displays changing under a sheep (a window resized, a monitor unplugged)', () => {
+  const small = (w: number, h: number): World => ({
+    areas: [{ x: 0, y: 0, width: w, height: h }],
+    windows: [],
+  });
+  const settle = (cp: CompiledPack, s0: SheepState, w: World, ms: number): SheepState => {
+    let s = s0;
+    for (let t = 0; t < ms; t += 16) s = update(cp, s, w, CFG, 16).state;
+    return s;
+  };
+
+  it('brings a sheep stranded past the new right edge back onto the display', () => {
+    const cp = compiled();
+    const stranded: SheepState = { ...standing(cp, { x: 900, y: FLOOR_Y }) };
+    const after = update(cp, stranded, small(500, 600), CFG, 16).state;
+    expect(after.x + CFG.size).toBeLessThanOrEqual(500);
+    expect(after.x).toBeGreaterThanOrEqual(0);
+    expect(after.y).toBe(FLOOR_Y);
+  });
+
+  it('does not let a sheep fall forever when the floor moved up past it', () => {
+    const cp = compiled();
+    const below: SheepState = { ...standing(cp, { x: 100, y: FLOOR_Y }) }; // floor was at y=600
+    const s = settle(cp, below, small(1000, 300), 5000);
+    expect(s.y).toBeLessThanOrEqual(300 - CFG.size);
+    expect(s.y).toBeGreaterThanOrEqual(0);
+  });
+
+  it('moves a sheep that was on an unplugged monitor onto the one that is left', () => {
+    const cp = compiled();
+    const w: World = {
+      areas: [{ x: 0, y: 0, width: 1000, height: 600 }],
+      windows: [],
+    };
+    const onSecond: SheepState = { ...standing(cp, { x: 1400, y: FLOOR_Y }) };
+    const s = settle(cp, onSecond, w, 500);
+    expect(s.x + CFG.size).toBeLessThanOrEqual(1000);
+    expect(s.y).toBeCloseTo(FLOOR_Y, 0);
+  });
+
+  it('leaves sheep that are fine, and sheep that have not yet walked in, alone', () => {
+    const cp = compiled();
+    const fine = standing(cp, { x: 300, y: FLOOR_Y });
+    const after = update(cp, fine, world(), CFG, 16).state;
+    expect(after.y).toBe(FLOOR_Y);
+    const arriving = spawn(cp, world(), CFG, 1).state; // starts above the screen, not yet "entered"
+    expect(arriving.entered).toBe(false);
+    expect(update(cp, arriving, world(), CFG, 16).state.y).toBeLessThanOrEqual(arriving.y + 20);
+  });
+
+  it('copes with there being no display at all (nothing to rescue onto)', () => {
+    const cp = compiled();
+    const s = standing(cp, { x: 100, y: 100 });
+    expect(() => update(cp, s, { areas: [], windows: [] }, CFG, 16)).not.toThrow();
+  });
+});
+
 describe('gravity and landing', () => {
   it('falls when there is no floor, then lands on the display bottom and resumes walking', () => {
     const cp = compiled();

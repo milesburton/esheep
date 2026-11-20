@@ -224,3 +224,14 @@ loaded, sheep windows, packs, `rendered`), and exits. The job fails unless it re
 module is available, so a release cannot ship a build that does not start or has lost its native
 window support. The builds are unsigned (no certificate), so SmartScreen warns; the release notes
 and README say how to proceed. This verifies startup on a real Windows runner, not hand-use.
+
+## 23. Sheep are rescued when the displays change under them
+
+Resizing the browser window (demo) or changing resolution / unplugging a monitor (app) moves the
+walls and floors. A sheep that had been standing at the old right or bottom edge was then off every
+display: stuck against a wall that moved, or falling past a floor that was now above it
+(`y` in the thousands in the reproduction). `update` now starts with `rescue`: an entered sheep
+whose lower body is on no display is put on the nearest one (`clampIntoAreas`, the same helper the
+thrown-body physics and the held ball use), and the normal rules take over. Sheep that have not yet
+walked in, and sheep legitimately standing on a window near the top with their head off-screen, are
+untouched.

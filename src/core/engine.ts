@@ -1,5 +1,13 @@
 import { evalExpr } from './expr.js';
-import { TOL, farthestValid, intersects, onScreen, onScreenLower, overlapsX } from './geometry.js';
+import {
+  TOL,
+  clampIntoAreas,
+  farthestValid,
+  intersects,
+  onScreen,
+  onScreenLower,
+  overlapsX,
+} from './geometry.js';
 import { stepBallistic } from './physics.js';
 import { drawMany, nextRandom } from './rng.js';
 
@@ -629,6 +637,18 @@ export const release = (
   };
 };
 
+/**
+ * If the displays changed under a sheep (a window was resized, a monitor unplugged), it can find
+ * itself off every display: stuck against a wall that moved, or falling past a floor that is now
+ * above it. Put it back on the nearest display; gravity and the usual rules take over from there.
+ */
+const rescue = (s: SheepState, world: World, cfg: Config): SheepState => {
+  if (!s.entered || world.areas.length === 0) return s;
+  if (onScreenLower(world.areas, cfg.size, s.x, s.y)) return s;
+  const at = clampIntoAreas(world.areas, cfg.size, s.x, s.y);
+  return at.x === s.x && at.y === s.y ? s : { ...s, ...at, hop: null };
+};
+
 /** Advance simulated time by `dtMs`. */
 export const update = (
   cp: CompiledPack,
@@ -640,11 +660,11 @@ export const update = (
   if (state.mode.kind === 'held') return { state: loopFrames(state, cfg, dtMs), started: [] };
   if (state.mode.kind === 'thrown') return updateThrown(cp, state, state.mode, world, cfg, dtMs);
 
-  let s: SheepState = {
-    ...state,
-    acc: state.acc + dtMs,
-    kickCd: Math.max(0, state.kickCd - dtMs),
-  };
+  let s: SheepState = rescue(
+    { ...state, acc: state.acc + dtMs, kickCd: Math.max(0, state.kickCd - dtMs) },
+    world,
+    cfg,
+  );
   let started: readonly string[] = [];
   let kicks: readonly Kick[] = [];
   const restart = (id: number | null, fallback: number): void => {

@@ -441,3 +441,28 @@ test.describe('tag', () => {
     await expect(page.locator('canvas.sheep.it')).toHaveCount(1);
   });
 });
+
+test('shrinking the browser window keeps every sheep on the (smaller) screen', async ({ page }) => {
+  await open(page);
+  await hideWindows(page);
+  for (let i = 0; i < 4; i++) await page.evaluate(() => window.__demo.add());
+  await page.evaluate(() => window.__demo.step(15_000));
+  await page.setViewportSize({ width: 600, height: 420 });
+  await page.evaluate(() => window.__demo.step(6000));
+  const m = await monitor(page);
+  const all = await page.evaluate(() => window.__demo.snapshots());
+  expect(all).toHaveLength(5);
+  for (const s of all) {
+    expect(s.x).toBeGreaterThanOrEqual(m.left - 1);
+    expect(s.x + 40).toBeLessThanOrEqual(m.right + 1);
+    expect(s.y + 40).toBeLessThanOrEqual(m.bottom + 1); // not fallen through the new floor
+    expect(s.y).toBeGreaterThan(-100);
+  }
+  // And growing it again lets them roam the larger screen (nobody is stuck in the corner).
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.evaluate(() => window.__demo.step(15_000));
+  const m2 = await monitor(page);
+  const xs = (await page.evaluate(() => window.__demo.snapshots())).map((s) => s.x);
+  expect(Math.max(...xs)).toBeGreaterThan(m.right - m.left);
+  expect(Math.max(...xs)).toBeLessThanOrEqual(m2.right);
+});
