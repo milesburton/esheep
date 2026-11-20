@@ -287,3 +287,19 @@ Cutting v0.1.1 took four CI rounds, all about the tests, none about the app. Wha
   then proved the fixes (two full runs, `--retries=0`).
 - Packaging output (`release/`) is excluded from markdown lint, which the pre-commit hook had picked up.
 - New sheep windows are spread out at creation instead of all starting at screen centre.
+
+## 26. The desktop app defaults to the original art (and old installs are migrated)
+
+0.1.0 and 0.1.1 shipped with `builtin` as the default pack: the generated, simple bouncing sheep in a
+fixed 128 px window. That is three times the size of the 40 px classic sprite and not the art the demo,
+the README or the screenshots show, so a fresh install of the desktop app looked wrong and "huge".
+Verified by launching a fresh-userData build: `pack: builtin`, window 128x128. Because electron-store
+_writes its defaults to `config.json` on first run_, changing `DEFAULT_PREFS` alone would not have
+helped anyone who already installed it, so `src/main/prefs.ts` adds a one-time migration keyed on a
+`version` field: below version 2, a stored `builtin` becomes `original` (or `woolly` if that is
+missing). `version` is deliberately not one of the store's defaults, otherwise electron-store would
+fill it in for an existing install and the migration would never run. A user who picks the bouncing
+sheep afterwards keeps it. The Settings list now shows friendly names ("Original eSheep", "Woolly
+(generated)", "Bouncing sheep (simple)"). The e2e suite seeds the old bouncing-sheep preferences for the
+tests that need that sheep, and has four new tests for fresh installs, the upgrade, and a deliberate
+choice surviving it.

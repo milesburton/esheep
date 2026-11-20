@@ -129,6 +129,10 @@ The Electron end-to-end tests need a display. On a headless Linux box run them u
 
 ## Sprite packs
 
+The desktop app starts with the **original eSheep art** (40 px, shown small). Pick a different pack in
+Settings; installs from 0.1.0 and 0.1.1, which started on the large simple bouncing sheep, are moved to the
+original art the first time they run a newer version.
+
 | Pack      | Behaviour                                                                                                                                                                          |
 | :-------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `builtin` | The original brief: a sheep that drifts in straight lines and bounces.                                                                                                             |

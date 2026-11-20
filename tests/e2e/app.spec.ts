@@ -13,8 +13,19 @@ import * as path from 'path';
 let app: ElectronApplication;
 let userData: string;
 
-const launch = async (): Promise<ElectronApplication> => {
+/**
+ * Preferences most tests start from: the simple bouncing sheep in its 128px window, already at the
+ * current schema version. (A brand-new install defaults to the original art; the 'first run' tests
+ * below launch with no preferences at all, to check exactly that.)
+ */
+const BOUNCE_PREFS = { speed: 1, sound: false, pack: 'builtin', count: 1, scale: 1, version: 2 };
+
+/** Launch the app. `prefs` is written to its config.json first; `null` means a brand-new install. */
+const launch = async (
+  prefs: Record<string, unknown> | null = BOUNCE_PREFS,
+): Promise<ElectronApplication> => {
   userData = fs.mkdtempSync(path.join(os.tmpdir(), 'esheep-e2e-'));
+  if (prefs) fs.writeFileSync(path.join(userData, 'config.json'), JSON.stringify(prefs));
   const env = { ...process.env, ESHEEP_TEST: '1' } as Record<string, string>;
   delete env.ELECTRON_RUN_AS_NODE; // set by some hosts (e.g. VS Code); would make Electron act as plain Node
   return electron.launch({ args: ['.', '--no-sandbox', `--user-data-dir=${userData}`], env });
@@ -207,8 +218,10 @@ test.describe('settings', () => {
     await expect(page.locator('#speed')).toHaveValue('1');
     await expect(page.locator('#sound')).not.toBeChecked();
     const packs = await page.locator('#pack option').allTextContents();
-    expect(packs).toEqual(expect.arrayContaining(['builtin', 'woolly']));
-    await expect(page.locator('#pack')).toHaveValue('builtin');
+    expect(packs).toEqual(
+      expect.arrayContaining(['Bouncing sheep (simple)', 'Woolly (generated)', 'Original eSheep']),
+    );
+    await expect(page.locator('#pack')).toHaveValue('builtin'); // what this test's seed chose
   });
 
   test('saving persists preferences (and clamps out-of-range values)', async () => {
@@ -539,6 +552,70 @@ test.describe('sheep never overlap (in the real app, where positions arrive a mo
     expect(result.samples).toBeGreaterThan(20);
     // Positions arrive up to ~50ms late between windows, so allow a little more than in the demo.
     expect(result.overlapping / result.samples).toBeLessThan(0.08);
+  });
+});
+
+test.describe('first run and upgrades (which sheep you get)', () => {
+  /** Restart the app with this config.json (or none), as a user installing or upgrading would. */
+  const relaunch = async (prefs: Record<string, unknown> | null): Promise<Page> => {
+    await app.close();
+    fs.rmSync(userData, { recursive: true, force: true });
+    app = await launch(prefs);
+    return sheepPage();
+  };
+  const storedPack = async (): Promise<string> =>
+    (await (await sheepPage()).evaluate(() => window.electronAPI.loadPrefs())).pack;
+
+  test('a brand-new install gets the original eSheep art, small, not the huge bouncing sheep', async () => {
+    const page = await relaunch(null);
+    expect(await storedPack()).toBe('original');
+    // The classic art is 40px: its window is the sprite plus a 6px margin, not 128px.
+    await expect.poll(async () => (await sheepBounds()).width, { timeout: 15_000 }).toBe(52);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const c = document.querySelector('canvas') as HTMLCanvasElement;
+          const px = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+          return px.some((v, i) => i % 4 === 3 && v > 16); // something is drawn
+        }),
+      )
+      .toBe(true);
+    const onDisk = JSON.parse(fs.readFileSync(path.join(userData, 'config.json'), 'utf8'));
+    expect(onDisk).toMatchObject({ pack: 'original', version: 2 });
+  });
+
+  test('an install from 0.1.0 / 0.1.1 (which defaulted to the bouncing sheep) is moved to the original art', async () => {
+    // Exactly what those releases wrote to disk on first run: no version, pack builtin.
+    await relaunch({ speed: 1, sound: false, pack: 'builtin', count: 1, scale: 1 });
+    expect(await storedPack()).toBe('original');
+    await expect.poll(async () => (await sheepBounds()).width, { timeout: 15_000 }).toBe(52);
+    const onDisk = JSON.parse(fs.readFileSync(path.join(userData, 'config.json'), 'utf8'));
+    expect(onDisk.version).toBe(2);
+  });
+
+  test('upgrading keeps a pack the user chose, and keeps a bouncing sheep chosen after the upgrade', async () => {
+    await relaunch({ speed: 1, sound: false, pack: 'woolly', count: 1, scale: 1 });
+    expect(await storedPack()).toBe('woolly');
+    // Already at the current version: builtin was a deliberate choice, so it stays.
+    await relaunch({ speed: 1, sound: false, pack: 'builtin', count: 1, scale: 1, version: 2 });
+    expect(await storedPack()).toBe('builtin');
+    await expect.poll(async () => (await sheepBounds()).width, { timeout: 15_000 }).toBe(128);
+  });
+
+  test('the Settings window shows the original art selected on a new install', async () => {
+    const page = await relaunch(null);
+    expect(await storedPack()).toBe('original');
+    const opened = app.waitForEvent('window', {
+      predicate: (w) => w.url().endsWith('/settings.html'),
+    });
+    await app.evaluate(() =>
+      (globalThis as unknown as { __esheep: { openSettings(): void } }).__esheep.openSettings(),
+    );
+    const settings = await opened;
+    await settings.waitForLoadState('domcontentloaded');
+    await expect(settings.locator('#pack')).toHaveValue('original');
+    await expect(settings.locator('#pack option:checked')).toHaveText('Original eSheep');
+    void page;
   });
 });
 

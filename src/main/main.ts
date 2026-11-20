@@ -5,6 +5,7 @@ import * as path from 'path';
 import { WINDOW_PAD, obstaclesFrom } from '../core/geometry';
 import { enableAutoLaunch } from './autolaunch';
 import { createKickAbout } from './kickabout';
+import { migratePrefs } from './prefs';
 import { createTagPlay } from './tagplay';
 import { BUILTIN, listPacks, loadPack } from './pack';
 import { createWindowSource, type NativeWindow, type WindowManagerLike } from './windows';
@@ -37,13 +38,20 @@ const getVisibleWindows = createWindowSource(process.platform, process.pid, load
 
 const MAX_SHEEP = 12;
 const MAX_SCALE = 4;
-const DEFAULT_PREFS: Prefs = { speed: 1, sound: false, pack: BUILTIN, count: 1, scale: 1 };
+// The original eSheep art is the default sheep (the simple bouncing `builtin` one is opt-in).
+const DEFAULT_PREFS: Prefs = { speed: 1, sound: false, pack: 'original', count: 1, scale: 1 };
 const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, n));
 
-const store = new Store<Prefs>({ defaults: DEFAULT_PREFS });
+// NB `version` is deliberately not a default: electron-store would fill it in for an existing install
+// and the migration would think it had already run.
+const store = new Store<Prefs & { version?: number }>({ defaults: DEFAULT_PREFS });
 const preload = path.join(__dirname, '..', 'preload', 'preload.js');
 const page = (name: string): string => path.join(__dirname, '..', 'web', 'app', name);
 const asset = (name: string): string => path.join(__dirname, '..', '..', 'assets', name);
+
+// Existing installs were written with the old default (the bouncing sheep): move them once.
+const migrated = migratePrefs(store, listPacks(asset('')));
+if (migrated) console.log(`prefs: moved from the bouncing sheep to the "${migrated}" pack`);
 
 const sheepWins: BrowserWindow[] = [];
 let settingsWin: BrowserWindow | null = null;
