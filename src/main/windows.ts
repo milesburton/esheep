@@ -49,7 +49,9 @@ export const createWindowSource = (
   ownPid: number,
   load: () => WindowManagerLike,
   toDip?: ToDip,
-): (() => WindowInfo[]) => {
+): (() => WindowInfo[]) & {
+  /** False when the native module is missing or refused (screen edges only). */ available: boolean;
+} => {
   const manager = ((): WindowManagerLike | null => {
     if (platform !== 'win32' && platform !== 'darwin') return null;
     try {
@@ -71,7 +73,7 @@ export const createWindowSource = (
     return toDip(physicalBounds(b, w.getScaleFactor?.()));
   };
 
-  return () => {
+  const list = (): WindowInfo[] => {
     if (!manager) return [];
     try {
       return manager
@@ -86,4 +88,5 @@ export const createWindowSource = (
       return [];
     }
   };
+  return Object.assign(list, { available: manager !== null });
 };

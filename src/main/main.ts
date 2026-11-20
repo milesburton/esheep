@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, Tray } from 'electron';
 import Store from 'electron-store';
+import * as fs from 'fs';
 import * as path from 'path';
 import { WINDOW_PAD, obstaclesFrom } from '../core/geometry';
 import { enableAutoLaunch } from './autolaunch';
@@ -373,6 +374,40 @@ if (process.env.ESHEEP_TEST === '1') {
   });
 }
 
+/**
+ * `ESHEEP_SELFTEST=<file>`: start normally, wait for the first sheep to render, write a JSON report
+ * (did the page load, is the native window module available, ...) to <file>, then quit. Lets CI prove
+ * a packaged build, including the native module, really launches on its own OS.
+ */
+const runSelfTest = (out: string): void => {
+  const report = async (): Promise<void> => {
+    const first = sheepWins[0];
+    const result: Record<string, unknown> = {
+      platform: process.platform,
+      arch: process.arch,
+      version: app.getVersion(),
+      electron: process.versions.electron,
+      nativeWindows: getVisibleWindows.available,
+      visibleWindows: getVisibleWindows().length,
+      sheepWindows: sheepWins.length,
+      packs: listPacks(asset('')),
+    };
+    try {
+      result.rendered = Boolean(
+        await first?.webContents.executeJavaScript(
+          "typeof window.electronAPI === 'object' && !!document.querySelector('canvas')",
+        ),
+      );
+    } catch (err) {
+      result.rendered = false;
+      result.error = String(err);
+    }
+    fs.writeFileSync(out, JSON.stringify(result, null, 2));
+    app.exit(0);
+  };
+  setTimeout(() => void report(), 6000);
+};
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -381,7 +416,9 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(() => {
     createTray();
     setSheepCount(store.get('count'));
-    enableAutoLaunch();
+    // A self-test run (CI proving a packaged build starts) must not touch login items.
+    if (process.env.ESHEEP_SELFTEST) runSelfTest(process.env.ESHEEP_SELFTEST);
+    else enableAutoLaunch();
   });
   // Tray app: don't quit when the settings window closes.
   app.on('window-all-closed', () => {

@@ -10,16 +10,22 @@ files:
   - '!dist/**/*.test.js'
   - '!dist/test/**'
   - package.json
+# Stable, descriptive file names for the GitHub release.
 win:
-  target: nsis
+  target: [nsis, portable]
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  artifactName: eSheep-Setup-${version}-${arch}.${ext}
+portable:
+  artifactName: eSheep-Portable-${version}-${arch}.${ext}
 mac:
   target: dmg
+  artifactName: eSheep-${version}-mac-${arch}.${ext}
   category: public.app-category.entertainment
   extendInfo:
     NSAppleEventsUsageDescription: eSheep needs access to see other windows.
 linux:
   target: AppImage
+  artifactName: eSheep-${version}-linux-${arch}.${ext}
   category: Utility

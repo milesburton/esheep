@@ -42,6 +42,17 @@ TypeScript, with a functional, fully tested core that also powers a
 
 <!-- screenshots:end -->
 
+## Download
+
+**[Get the latest release](https://github.com/milesburton/esheep/releases/latest)**: a Windows installer
+(`eSheep-Setup-…-x64.exe`) and a portable exe (`eSheep-Portable-…-x64.exe`, no install needed), plus a macOS
+`.dmg` and a Linux `.AppImage`, with `SHA256SUMS.txt`.
+
+The builds are **not code-signed**. On Windows, SmartScreen will say "Windows protected your PC": choose
+**More info**, then **Run anyway**. On macOS, approve the app in System Settings, Privacy & Security.
+Releases are built by the [Package workflow](.github/workflows/package.yml) when a `v*` tag is pushed (it
+starts the packaged Windows app in CI and checks it renders a sheep and loads the native window module).
+
 ## Try it
 
 **[Open the live demo](https://milesburton.github.io/esheep/)**: a fake desktop with draggable

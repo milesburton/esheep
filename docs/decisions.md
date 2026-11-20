@@ -209,3 +209,18 @@ and glows red when it is "it". It is unavailable for the bounce sheep, ends when
 changes, and starting it adds a second sheep if there is only one.
 
 Not done: a score or teams (item 1 on the roadmap) and tag between sheep on different levels.
+
+## 22. Releases: tag-triggered, with a self-tested Windows build
+
+Pushing a `v*` tag runs the Package workflow on Windows, macOS and Linux, and a final `release` job
+publishes the installers plus `SHA256SUMS.txt` as a GitHub Release (`gh release create`, no third-party
+action). The tag must equal `v<package.json version>`; the Windows installer and portable exe are
+mandatory for the release to be published. File names are fixed in `electron-builder.yml`
+(`eSheep-Setup-<version>-x64.exe`, `eSheep-Portable-<version>-x64.exe`, ...) so download links are stable.
+
+The Windows job also **starts the packaged exe** with `ESHEEP_SELFTEST=<file>`: the app opens its sheep
+window, waits for the canvas, writes a JSON report (platform, version, whether `node-window-manager`
+loaded, sheep windows, packs, `rendered`), and exits. The job fails unless it rendered and the native
+module is available, so a release cannot ship a build that does not start or has lost its native
+window support. The builds are unsigned (no certificate), so SmartScreen warns; the release notes
+and README say how to proceed. This verifies startup on a real Windows runner, not hand-use.

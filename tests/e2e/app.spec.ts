@@ -441,6 +441,36 @@ test.describe('tag', () => {
   });
 });
 
+test.describe('self-test (what CI runs against a packaged build)', () => {
+  test('starts, renders a sheep, reports itself and exits cleanly', async () => {
+    const out = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'esheep-selftest-')),
+      'report.json',
+    );
+    const env = { ...process.env, ESHEEP_SELFTEST: out } as Record<string, string>;
+    delete env.ELECTRON_RUN_AS_NODE;
+    const t = await electron.launch({
+      args: [
+        '.',
+        '--no-sandbox',
+        `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'esheep-st-'))}`,
+      ],
+      env,
+    });
+    await new Promise<void>((resolve) => t.on('close', () => resolve()));
+    const report = JSON.parse(fs.readFileSync(out, 'utf8'));
+    expect(report).toMatchObject({
+      rendered: true,
+      sheepWindows: 1,
+      platform: process.platform,
+      nativeWindows: process.platform === 'linux' ? false : expect.any(Boolean),
+    });
+    expect(report.packs).toEqual(expect.arrayContaining(['builtin', 'woolly', 'original']));
+    expect(report.version).toBe(JSON.parse(fs.readFileSync('package.json', 'utf8')).version);
+    fs.rmSync(path.dirname(out), { recursive: true, force: true });
+  });
+});
+
 test.describe('several sheep', () => {
   type Seam = {
     addSheep(): void;
@@ -528,6 +558,9 @@ test.describe('several sheep', () => {
 test.describe('grab and toss in the real app', () => {
   test('pointer events on the sheep canvas pick it up and put it down', async () => {
     const page = await sheepPage();
+    // The window starts small and the renderer resizes it to the bounce sheep's 128px square; the
+    // pointer coordinates below are only inside the window once that has happened.
+    await expect.poll(async () => (await sheepBounds()).width).toBe(128);
     // Wait for the sprite to be drawn so there are opaque pixels to hit.
     await expect
       .poll(() =>

@@ -40,6 +40,22 @@ describe('createWindowSource', () => {
     expect(source([w])()).toEqual([]);
   });
 
+  it('reports whether the native module is available', () => {
+    expect(source([win({})]).available).toBe(true);
+    expect(createWindowSource('linux', 1, vi.fn()).available).toBe(false);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const broken = createWindowSource('win32', 1, () => {
+      throw new Error('no native build');
+    });
+    expect(broken.available).toBe(false);
+    warn.mockRestore();
+    const refused = createWindowSource('darwin', 1, () => ({
+      getWindows: () => [],
+      requestAccessibility: () => false,
+    }));
+    expect(refused.available).toBe(false);
+  });
+
   it('returns nothing on Linux (no enumeration yet) and never loads the native module there', () => {
     const load = vi.fn();
     expect(createWindowSource('linux', 1, load)()).toEqual([]);
