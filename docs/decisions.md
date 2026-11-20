@@ -235,3 +235,10 @@ whose lower body is on no display is put on the nearest one (`clampIntoAreas`, t
 thrown-body physics and the held ball use), and the normal rules take over. Sheep that have not yet
 walked in, and sheep legitimately standing on a window near the top with their head off-screen, are
 untouched.
+
+Releasing, as done for v0.1.0 (and two pitfalls): bump `version` in `package.json`, commit, then
+`git tag -a vX.Y.Z <commit> && git push origin vX.Y.Z`. **Tag a commit whose message does not contain
+`[skip ci]`**: GitHub suppresses push-triggered workflows for it, including tag pushes, and the README
+bot's commits all carry that marker (tag the code commit, not the bot's commit after it). The release
+job has no checkout, so `gh` needs `GH_REPO`. A run uses the workflow file as it was at the tag, so a
+workflow fix means moving the tag (safe only while no release exists for it).
