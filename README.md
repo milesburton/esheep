@@ -9,7 +9,7 @@ TypeScript, with a functional, fully tested core that also powers a
 
 [![CI](https://github.com/milesburton/esheep/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-yellow.svg)](LICENSE)
-[![unit tests: 262/262 passing](https://img.shields.io/badge/unit_tests-262%2F262_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
+[![unit tests: 280/280 passing](https://img.shields.io/badge/unit_tests-280%2F280_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
 [![e2e tests: 53/53 passing](https://img.shields.io/badge/e2e_tests-53%2F53_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
 [![line coverage: 99.2%](https://img.shields.io/badge/line_coverage-99.2%25-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
 [![branch coverage: 95.7%](https://img.shields.io/badge/branch_coverage-95.7%25-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
