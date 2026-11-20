@@ -104,6 +104,13 @@ describe('stepBallistic', () => {
     expect(r.body.y + opts.size).toBeLessThanOrEqual(600);
   });
 
+  it('brings a body that starts outside every display back inside instead of letting it fall forever', () => {
+    const r = run({ x: 1461, y: 357, vx: 2200, vy: -2300 }, world(), 6);
+    expect(r.landed).toBe(true);
+    expect(r.body.x + opts.size).toBeLessThanOrEqual(1000);
+    expect(r.body.y).toBe(600 - opts.size);
+  });
+
   it('crosses between adjacent displays', () => {
     const w: World = {
       areas: [

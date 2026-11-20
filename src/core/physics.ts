@@ -1,4 +1,4 @@
-import { TOL, intersects, onScreen, overlapsX } from './geometry.js';
+import { TOL, clampIntoAreas, intersects, onScreen, overlapsX } from './geometry.js';
 
 export interface Body {
   readonly x: number;
@@ -86,6 +86,10 @@ export const stepBallistic = (
   opts: BallisticOpts,
   dtSec: number,
 ): BallisticResult => {
+  // A body outside every display (thrown from off-screen, say) would never reflect or land and
+  // would fall forever, so put it back inside the nearest one first.
+  const home = clampIntoAreas(world.areas, opts.size, body.x, body.y);
+  if (home.x !== body.x || home.y !== body.y) body = { ...body, ...home };
   const travel = Math.max(Math.abs(body.vx), Math.abs(body.vy)) * dtSec;
   const n = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(travel / MAX_STEP_PX)));
   const dt = dtSec / n;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   clamp,
+  clampIntoAreas,
   farthestValid,
   insideAny,
   intersects,
@@ -68,6 +69,19 @@ describe('geometry', () => {
     expect(farthestValid(0, 100, () => true)).toBeCloseTo(100, 1);
     expect(farthestValid(50, 0, (v) => v >= 20)).toBeCloseTo(20, 1);
     expect(farthestValid(10, 100, (v) => v <= 10)).toBeCloseTo(10, 1);
+  });
+
+  it('clampIntoAreas leaves an on-screen square alone and pulls an off-screen one to the nearest display', () => {
+    expect(clampIntoAreas([left, right], 20, 30, 40)).toEqual({ x: 30, y: 40 });
+    expect(clampIntoAreas([left], 20, 500, 40)).toEqual({ x: 80, y: 40 }); // past the right edge
+    expect(clampIntoAreas([left], 20, -50, -50)).toEqual({ x: 0, y: 0 });
+    expect(clampIntoAreas([left, right], 20, 260, 30)).toEqual({ x: 180, y: 30 }); // nearest is `right`
+    expect(clampIntoAreas([], 20, 1, 2)).toEqual({ x: 1, y: 2 });
+    // A display smaller than the square cannot contain it: pin to its corner rather than misbehave.
+    expect(clampIntoAreas([{ x: 0, y: 0, width: 10, height: 10 }], 20, 50, 50)).toEqual({
+      x: 0,
+      y: 0,
+    });
   });
 
   it('clamp bounds a value', () => {

@@ -79,6 +79,22 @@ export const tunePack = (pack: ClassicPack): ClassicPack => {
     const a = animations.find((x) => x.name === name);
     if (a && !a[list].some((n) => n.id === ref.id && n.only === ref.only)) a[list].push({ ...ref });
   }
+  // The classic sheets have no kick. Reuse the skid from `run_end` (a few run poses) as one, so the
+  // sheep visibly lunges at the ball; a pack with its own `kick` animation keeps it.
+  const skid = animations.find((a) => a.name === 'run_end');
+  if (skid && !animations.some((a) => a.name === 'kick')) {
+    animations.push({
+      ...skid,
+      id: Math.max(...animations.map((a) => a.id)) + 1,
+      name: 'kick',
+      frames: skid.frames.slice(0, 4),
+      repeat: '0',
+      repeatFrom: '0',
+      next: [{ p: 100, only: 'none', id: 1 }],
+      border: [],
+      gravity: [],
+    });
+  }
   return {
     ...pack,
     animations,

@@ -62,7 +62,7 @@ test('the original eSheep art is the default, and the generated pack is still av
   expect(urls).toContain('/packs/original.json');
   const original = await (await page.request.get('/packs/original.json')).json();
   expect(original).toMatchObject({ name: 'original', tilesX: 16, tilesY: 11 });
-  expect(original.animations).toHaveLength(56);
+  expect(original.animations).toHaveLength(57); // the 56 classic animations plus the synthesised kick
   const woolly = await (await page.request.get('/packs/woolly.json')).json();
   expect(woolly.name).toBe('woolly');
   expect(await page.request.get('/packs/index.json').then((r) => r.json())).toEqual([
@@ -317,4 +317,70 @@ test('the canvas is rendered at device resolution so pixel art stays crisp', asy
   await page.mouse.move(s.x + 20, s.y + 22);
   await expect(page.locator('#sheep')).toHaveCSS('pointer-events', 'auto');
   await context.close();
+});
+
+test.describe('kick-about', () => {
+  const ball = (page: Page) => page.evaluate(() => window.__demo.ball());
+  const dist = (page: Page): Promise<number> =>
+    page.evaluate(() => {
+      const b = window.__demo.ball();
+      const all = window.__demo.snapshots();
+      return b
+        ? Math.min(...all.map((s) => Math.hypot(s.x + 20 - (b.x + 7), s.y + 20 - (b.y + 7))))
+        : -1;
+    });
+
+  test('the button toggles a ball, which falls and settles on the floor', async ({ page }) => {
+    await open(page);
+    await hideWindows(page);
+    const button = page.getByRole('button', { name: 'Kick-about' });
+    await expect(page.locator('#ball')).toHaveCount(0);
+    await button.click();
+    await expect(page.locator('#ball')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Stop kick-about' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(await ball(page)).not.toBeNull();
+    await page.getByRole('button', { name: 'Stop kick-about' }).click();
+    await expect(page.locator('#ball')).toHaveCount(0);
+    expect(await ball(page)).toBeNull();
+  });
+
+  test('sheep run at the ball and kick it around', async ({ page }) => {
+    await open(page);
+    await hideWindows(page);
+    for (let i = 0; i < 3; i++) await page.evaluate(() => window.__demo.add());
+    await page.evaluate(() => window.__demo.step(9000)); // let them all land first
+    await page.evaluate(() => window.__demo.kickAbout(true));
+    await page.evaluate(() => window.__demo.step(60_000));
+    expect(await page.evaluate(() => window.__demo.kicks())).toBeGreaterThan(2);
+    const b = await ball(page);
+    expect(b).not.toBeNull();
+  });
+
+  test('you can throw the ball, and a sheep goes after it', async ({ page }) => {
+    await open(page);
+    await hideWindows(page);
+    await page.evaluate(() => window.__demo.step(9000));
+    await page.evaluate(() => window.__demo.kickAbout(true));
+    await page.evaluate(() => window.__demo.step(4000)); // ball settles
+    const b = (await ball(page))!;
+    const box = (await page.locator('#ball').boundingBox())!;
+    await page.mouse.move(box.x + 7, box.y + 7);
+    await page.mouse.down();
+    await page.mouse.move(box.x - 100, box.y - 120, { steps: 3 });
+    await page.mouse.move(box.x - 330, box.y - 330, { steps: 3 });
+    await expect(page.locator('#ball')).toHaveCSS('cursor', 'grab');
+    const held = (await ball(page))!;
+    expect(held.x).toBeLessThan(b.x - 200); // follows the pointer while held
+    await page.mouse.up();
+    const thrown = (await ball(page))!;
+    expect(Math.hypot(thrown.vx, thrown.vy)).toBeGreaterThan(300);
+    await page.evaluate(() => window.__demo.step(6000)); // it lands and rolls
+    const before = await dist(page);
+    await page.evaluate(() => window.__demo.step(6000));
+    const after = await dist(page);
+    expect(after).toBeLessThan(before + 1); // the sheep is no further away, and usually much closer
+  });
 });

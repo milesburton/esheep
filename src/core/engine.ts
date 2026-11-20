@@ -60,6 +60,8 @@ export interface SheepState {
   readonly mode: Mode;
   readonly rng: number;
   readonly entered: boolean;
+  /** Milliseconds until this sheep may kick the ball again. */
+  readonly kickCd: number;
   /** Set while the sheep is hopping from the floor up onto a window. */
   readonly hop: Hop | null;
   // current animation playback
@@ -77,6 +79,14 @@ export interface Update {
   readonly state: SheepState;
   /** Names of animations that began during this update (e.g. to trigger a sound). */
   readonly started: readonly string[];
+  /** Kicks delivered to the ball during this update (the caller owns the ball). */
+  readonly kicks?: readonly Kick[];
+}
+
+/** A kick: the velocity (px/s) the ball should take. */
+export interface Kick {
+  readonly vx: number;
+  readonly vy: number;
 }
 
 interface Flags {
@@ -137,6 +147,7 @@ const placeholder = (anim: PackAnim, x: number, y: number, rng: number): SheepSt
   rng,
   entered: false,
   hop: null,
+  kickCd: 0,
   anim,
   frames: anim.frames,
   repeatFrom: 0,
@@ -305,6 +316,34 @@ const leapTarget = (
         onScreenLower(world.areas, S, x1, s.y),
     );
   return supported ? { x0: s.x, y0: s.y, x1, y1: s.y, arc: S * 1.3 } : null;
+};
+
+/** Animations a sheep can be pulled out of to chase the ball (it won't wake from a sleep for it). */
+const LOCOMOTION = new Set(['walk', 'walk_win2', 'walk_task2', 'run', 'run_begin', 'run_end']);
+const RUNNING = new Set(['run', 'run_begin']);
+/** How far (in sprite widths) away a sheep notices the ball. */
+const CHASE_RANGE = 14;
+const KICK_COOLDOWN_MS = 1100;
+/** Kick speeds (px/s at scale 1): horizontal, and the upward lift. */
+const KICK_VX = [380, 760] as const;
+const KICK_VY = [220, 460] as const;
+
+/** The ball is reachable on this level: which way to run, and whether it is close enough to kick. */
+const chaseBall = (
+  s: SheepState,
+  ball: Rect,
+  cfg: Config,
+): { dir: number; kickable: boolean } | null => {
+  const S = cfg.size;
+  const feet = s.y + S;
+  if (Math.abs(ball.y + ball.height - feet) > S * 1.2) return null; // on another level
+  const dx = ball.x + ball.width / 2 - (s.x + S / 2);
+  if (Math.abs(dx) > S * CHASE_RANGE) return null;
+  const dir = dx >= 0 ? 1 : -1;
+  const gap = dir > 0 ? ball.x - (s.x + S) : s.x - (ball.x + ball.width);
+  const kickable =
+    gap <= S * 0.25 && gap >= -S * 0.5 && ball.y + ball.height > s.y + S * 0.35 && ball.y < feet;
+  return { dir, kickable };
 };
 
 /** A window ledge just ahead (above head height) that a walking sheep could hop up onto. */
@@ -571,8 +610,13 @@ export const update = (
   if (state.mode.kind === 'held') return { state: loopFrames(state, cfg, dtMs), started: [] };
   if (state.mode.kind === 'thrown') return updateThrown(cp, state, state.mode, world, cfg, dtMs);
 
-  let s: SheepState = { ...state, acc: state.acc + dtMs };
+  let s: SheepState = {
+    ...state,
+    acc: state.acc + dtMs,
+    kickCd: Math.max(0, state.kickCd - dtMs),
+  };
   let started: readonly string[] = [];
+  let kicks: readonly Kick[] = [];
   const restart = (id: number | null, fallback: number): void => {
     const u = begin(cp, s, id ?? fallback, world, cfg);
     s = u.state;
@@ -639,6 +683,29 @@ export const update = (
       }
     }
     const heading = Math.sign(s.p0.x * dir);
+    if (world.ball && !s.hop && (flags.taskbar || flags.window) && LOCOMOTION.has(s.anim.name)) {
+      const chase = chaseBall(s, world.ball, cfg);
+      if (chase?.kickable && s.kickCd <= 0) {
+        const [a, r1] = nextRandom(s.rng);
+        const [b, r2] = nextRandom(r1);
+        const vx = (KICK_VX[0] + a * (KICK_VX[1] - KICK_VX[0])) * cfg.scale;
+        const vy = -(KICK_VY[0] + b * (KICK_VY[1] - KICK_VY[0])) * cfg.scale;
+        kicks = [...kicks, { vx: chase.dir * vx, vy }];
+        s = { ...s, rng: r2, kickCd: KICK_COOLDOWN_MS, flipped: chase.dir > 0 };
+        const kick = cp.byName.get('kick');
+        if (kick) {
+          restart(kick.id, 1);
+          continue;
+        }
+      } else if (chase && !chase.kickable) {
+        s = { ...s, flipped: chase.dir > 0 }; // face the ball (the art faces left, flipped = right)
+        const run = cp.byName.get('run');
+        if (run && !RUNNING.has(s.anim.name)) {
+          restart(run.id, 1);
+          continue;
+        }
+      }
+    }
     if (heading !== 0 && !s.hop && (flags.taskbar || flags.window)) {
       const jump = cp.byName.get('jump');
       const meet = otherAhead(s, heading, world, cfg);
@@ -681,7 +748,7 @@ export const update = (
       restart(c.id, 1);
     }
   }
-  return { state: s, started };
+  return kicks.length > 0 ? { state: s, started, kicks } : { state: s, started };
 };
 
 /** Switch straight to the named animation (e.g. from a demo picker); unknown names are ignored. */

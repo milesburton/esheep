@@ -148,3 +148,23 @@ re-renders at the right resolution (`setPixelRatio`). A `scale` preference (1 to
 engine's `Config.scale`, which already multiplies both the sprite size and the walking strides, so a
 bigger sheep also moves proportionally. Changing it, like changing pack, reloads the sheep windows.
 The art itself is still the 40 px sheet; a higher-resolution sheet would need new artwork.
+
+## 19. Kick-about (demo prototype)
+
+A ball is its own pure body (`src/core/ball.ts`): ballistic bounce in the air, rolling with
+exponential friction on floors and window tops, and it rolls off window edges. The engine takes
+`World.ball`; a sheep on a floor whose current animation is a locomotion one (it won't wake from a
+sleep for it) notices a ball on its level within 14 sprites, turns and runs at it, and when within a
+quarter sprite emits a `Kick` (velocity, scaled by the sprite scale) with a 1.1 s cooldown. The sheep
+never owns the ball: `Update.kicks` is an event the caller applies, so the same engine can later run
+against a ball held in the Electron main process. `tunePack` synthesises a `kick` from the pack's
+`run_end` skid when a pack has none. The demo owns the ball (a DOM circle), lets you grab and throw it
+with the same pointer code as the sheep, and exposes `__demo.kickAbout/ball/kicks` for tests.
+
+Bug found on the way: a body outside every display (a ball dragged past the edge, or a sheep thrown
+from off-screen) never reflected or landed and fell forever. `stepBallistic` now moves such a body
+into the nearest display first (`clampIntoAreas`), and the held ball is clamped to the playfield.
+
+Not done: the Electron app. There each sheep is its own window and renderer, so a shared ball needs
+the main-process simulation discussed in the design notes (ball as its own transparent window,
+opt-in, time-limited). Scoring and teams are also not built.

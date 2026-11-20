@@ -1,4 +1,6 @@
-import { obstaclesFrom } from '../core/geometry.js';
+import { ballRect, kickBall, stepBall, type Ball } from '../core/ball.js';
+import { clampIntoAreas, obstaclesFrom } from '../core/geometry.js';
+import { moveDrag, releaseVelocity, startDrag, type Drag } from '../core/pointer.js';
 import { beep } from '../web/sound.js';
 import { loadClassicSheet, loadImage } from '../web/sprites.js';
 import { createStage, type Snapshot, type Stage } from '../web/stage.js';
@@ -132,7 +134,65 @@ const refreshStatus = (): void => {
   document.body.dataset.animation = s.animation;
   document.body.dataset.mode = s.mode;
 };
+// ---- the kick-about ball ----------------------------------------------------------------------
+const BALL_BASE = 14;
+let ball: Ball | null = null;
+let ballEl: HTMLElement | null = null;
+let ballDrag: Drag | null = null;
+let kicks = 0;
+const ballSize = (): number => Math.round(BALL_BASE * scale);
+const currentBall = (): Rect | null => (ball ? ballRect(ball, ballSize()) : null);
+
+const drawBall = (): void => {
+  if (!ball || !ballEl) return;
+  const size = ballSize();
+  ballEl.style.width = `${size}px`;
+  ballEl.style.height = `${size}px`;
+  ballEl.style.transform = `translate(${ball.x}px, ${ball.y}px)`;
+};
+
+const startKickAbout = (): void => {
+  if (ball) return;
+  const area = world().areas[0];
+  ball = { x: area.x + area.width / 2, y: area.y + 20, vx: 140, vy: 0 };
+  ballEl = document.createElement('div');
+  ballEl.className = 'ball';
+  ballEl.id = 'ball';
+  ballEl.addEventListener('pointerdown', (e) => {
+    if (!ball) return;
+    ballEl?.setPointerCapture(e.pointerId);
+    ballDrag = startDrag(ball, { x: e.clientX, y: e.clientY }, e.timeStamp);
+  });
+  const release = (e: PointerEvent): void => {
+    if (!ballDrag || !ball) return;
+    ball = { ...ball, ...releaseVelocity(ballDrag, e.timeStamp) };
+    ballDrag = null;
+  };
+  ballEl.addEventListener('pointerup', release);
+  ballEl.addEventListener('pointercancel', release);
+  document.body.append(ballEl);
+  drawBall();
+  $('kickabout').textContent = 'Stop kick-about';
+  $('kickabout').setAttribute('aria-pressed', 'true');
+};
+
+const stopKickAbout = (): void => {
+  ball = null;
+  ballDrag = null;
+  ballEl?.remove();
+  ballEl = null;
+  $('kickabout').textContent = 'Kick-about';
+  $('kickabout').setAttribute('aria-pressed', 'false');
+};
+
+const stepBallFrame = (dt: number): void => {
+  if (!ball || paused || ballDrag) return;
+  ball = stepBall(ball, world(), ballSize(), (Math.min(dt, 50) * prefs.speed) / 1000);
+};
+
 const tickAll = (dt: number): void => {
+  stepBallFrame(dt);
+  drawBall();
   for (const s of flock) {
     s.stage.setPixelRatio(window.devicePixelRatio);
     s.stage.tick(dt);
@@ -174,6 +234,12 @@ const addSheep = (): void => {
     pixelRatio: window.devicePixelRatio,
     getWorld: world,
     getPrefs: () => prefs,
+    getBall: currentBall,
+    onKick: (k) => {
+      if (!ball || ballDrag) return;
+      ball = kickBall(ball, k);
+      kicks += 1;
+    },
     getOthers: () =>
       flock
         .filter((o) => o.stage !== me)
@@ -225,6 +291,15 @@ const start = async (name: string): Promise<void> => {
 
 // Pointer: each canvas only captures events over its own sheep's pixels.
 document.addEventListener('pointermove', (e) => {
+  if (ballDrag && ball) {
+    const m = moveDrag(ballDrag, { x: e.clientX, y: e.clientY }, e.timeStamp);
+    ballDrag = m.drag;
+    // The held ball can't be dragged out of the playfield (it would have nowhere to land).
+    const at = clampIntoAreas(world().areas, ballSize(), m.sprite.x, m.sprite.y);
+    ball = { ...ball, ...at, vx: 0, vy: 0 };
+    drawBall();
+    return;
+  }
   const dragging = flock.find((s) => s.stage.dragging());
   if (dragging) {
     dragging.stage.move({ x: e.clientX, y: e.clientY }, e.timeStamp);
@@ -285,6 +360,7 @@ scaleSelect.addEventListener('change', () => {
   scale = Number(scaleSelect.value);
   void start($<HTMLSelectElement>('pack').value);
 });
+$('kickabout').addEventListener('click', () => (ball ? stopKickAbout() : startKickAbout()));
 $('add').addEventListener('click', () => {
   if (flock.length >= MAX_SHEEP) return;
   wanted = flock.length + 1;
@@ -344,6 +420,10 @@ Object.assign(window, {
       addSheep();
     },
     count: (): number => flock.length,
+    /** The kick-about ball (a copy), or null. */
+    ball: (): Ball | null => (ball ? { ...ball } : null),
+    kickAbout: (on: boolean): void => (on ? startKickAbout() : stopKickAbout()),
+    kicks: (): number => kicks,
     ready: (): boolean => flock.length > 0,
   },
 });

@@ -14,6 +14,9 @@ interface Window {
     snapshots(): DemoSnap[];
     add(): void;
     count(): number;
+    ball(): { x: number; y: number; vx: number; vy: number } | null;
+    kickAbout(on: boolean): void;
+    kicks(): number;
     ready(): boolean;
   };
 }

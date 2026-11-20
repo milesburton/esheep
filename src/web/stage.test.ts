@@ -133,6 +133,19 @@ describe('classic stage', () => {
     expect(canvas.width).toBe(css);
   });
 
+  it('asks for the ball each tick, and reports the kicks the sheep deliver', () => {
+    const ball: Rect = { x: 0, y: 0, width: 14, height: 14 };
+    const getBall = vi.fn(() => ball);
+    const onKick = vi.fn();
+    const { stage } = make(woolly, { getBall, onKick });
+    stage.tick(16);
+    expect(getBall).toHaveBeenCalled();
+    expect(onKick).not.toHaveBeenCalled(); // nowhere near it yet
+    stage.setPaused(true);
+    stage.tick(16);
+    expect(getBall).toHaveBeenCalledTimes(1);
+  });
+
   it('has no rectangle for the bounce sheep', () => {
     expect(make(bounce).stage.rect()).toBeNull();
   });

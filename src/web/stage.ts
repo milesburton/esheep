@@ -18,6 +18,7 @@ import {
   update,
   type CompiledPack,
   type Config,
+  type Kick,
   type SheepState,
 } from '../core/engine.js';
 import { moveDrag, releaseVelocity, startDrag, type Drag, type Point } from '../core/pointer.js';
@@ -48,6 +49,10 @@ export interface StageOptions {
   readonly scale?: number;
   /** Device pixels per CSS pixel: the canvas is rendered at this resolution so it stays crisp. */
   readonly pixelRatio?: number;
+  /** The kick-about ball's rectangle, if there is one: sheep chase it. */
+  readonly getBall?: () => Rect | null;
+  /** A sheep kicked the ball: the velocity it should take. */
+  readonly onKick?: (kick: Kick) => void;
   /** Sprite rectangles of the other sheep, so this one can leap over them. */
   readonly getOthers?: () => readonly Rect[];
 }
@@ -86,7 +91,12 @@ export interface Stage {
 /** The two behaviours share this shape so pointer handling is written once. */
 interface Brain {
   pos(): Point;
-  step(dtMs: number, world: World, prefs: { speed: number; sound: boolean }): boolean; // true => play sound
+  step(
+    dtMs: number,
+    world: World,
+    prefs: { speed: number; sound: boolean },
+    onKick: (k: Kick) => void,
+  ): boolean; // true => play sound
   grab(p: Point, world: World): void;
   moveHeld(p: Point): void;
   release(v: { vx: number; vy: number }, world: World): void;
@@ -115,10 +125,12 @@ const classicBrain = (o: StageOptions, pack: ClassicPack): Brain => {
     pad,
     win,
     pos: () => ({ x: s.x, y: s.y }),
-    step: (dtMs, world, prefs) => {
+    step: (dtMs, world, prefs, onKick) => {
       const others = o.getOthers?.() ?? [];
-      const u = update(cp, s, { ...world, others }, cfg, dtMs * prefs.speed);
+      const ball = o.getBall?.() ?? undefined;
+      const u = update(cp, s, { ...world, others, ball }, cfg, dtMs * prefs.speed);
       s = u.state;
+      u.kicks?.forEach(onKick);
       return prefs.sound && u.started.some((n) => n.startsWith('boing'));
     },
     grab: (p, world) => {
@@ -233,7 +245,7 @@ export const createStage = (o: StageOptions): Stage => {
     windowSize: () => brain.win,
     tick: (dtMs) => {
       if (paused) return;
-      if (brain.step(dtMs, o.getWorld(), o.getPrefs())) o.onSound?.();
+      if (brain.step(dtMs, o.getWorld(), o.getPrefs(), (k) => o.onKick?.(k))) o.onSound?.();
       paint();
       place();
     },

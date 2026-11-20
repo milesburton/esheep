@@ -61,6 +61,9 @@ windows and an optional second monitor. Grab the sheep, fling it, and watch it l
   pixels to DIPs, so high-DPI and mixed-DPI desktops line up. macOS asks for the Accessibility
   permission (without it, or on Linux, the sheep uses screen edges only).
 - **Sprite packs**: two bundled, plus any desktopPet/eSheep-format `animations.xml`.
+- **Kick-about** (demo): press _Kick-about_ and a ball drops in; the sheep notice it, run over and
+  kick it around. Grab and throw the ball yourself and they chase it. Packs without a kick animation
+  borrow the run skid.
 - **High resolution**: the canvas is rendered at the display's physical resolution with smoothing off,
   so the pixel art stays crisp on retina and 4K screens (and follows a window between monitors of
   different density). A **Size** setting draws the sheep ×1 to ×4 (whole numbers look best); speed

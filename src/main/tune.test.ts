@@ -77,6 +77,34 @@ describe('tunePack', () => {
     expect(ids(tunePack({ ...once }))).toEqual(ids(once));
   });
 
+  it('adds a kick (from the run_end skid) to packs that have none, and keeps an existing one', () => {
+    const withSkid = base();
+    withSkid.animations.push(
+      anim({
+        id: 36,
+        name: 'run_end',
+        frames: [5, 4, 5, 4, 5, 3],
+        next: [next(1)],
+        border: [next(2)],
+      }),
+    );
+    const t = tunePack(withSkid);
+    const kick = t.animations.find((a) => a.name === 'kick');
+    expect(kick?.frames).toEqual([5, 4, 5, 4]);
+    expect(kick?.next).toEqual([{ p: 100, only: 'none', id: 1 }]);
+    expect(kick?.border).toEqual([]);
+    expect(new Set(t.animations.map((a) => a.id)).size).toBe(t.animations.length);
+
+    const own = tunePack({
+      ...withSkid,
+      animations: [...withSkid.animations, anim({ id: 99, name: 'kick', frames: [9] })],
+    });
+    expect(own.animations.filter((a) => a.name === 'kick')).toHaveLength(1);
+    expect(own.animations.find((a) => a.name === 'kick')?.frames).toEqual([9]);
+    // No skid to copy: no kick is invented.
+    expect(tunePack(base()).animations.some((a) => a.name === 'kick')).toBe(false);
+  });
+
   it('copes with packs that lack the classic animations', () => {
     const bare: ClassicPack = { ...base(), animations: [anim({ id: 9, name: 'x' })], spawns: [] };
     expect(() => tunePack(bare)).not.toThrow();

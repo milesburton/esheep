@@ -112,4 +112,6 @@ interface World {
   windows: readonly Rect[];
   /** Sprite rectangles of the other sheep, if there are any (they leap over each other). */
   others?: readonly Rect[];
+  /** The kick-about ball, if there is one (sheep chase and kick it). */
+  ball?: Rect;
 }

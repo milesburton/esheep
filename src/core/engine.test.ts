@@ -456,6 +456,135 @@ describe('leaping over other sheep', () => {
   });
 });
 
+describe('chasing and kicking the ball', () => {
+  const base = miniPack();
+  const withRun = (): CompiledPack =>
+    compilePack({
+      ...base,
+      animations: [
+        ...base.animations,
+        anim({
+          id: 7,
+          name: 'run',
+          start: { x: '-10', y: '0', offsety: '0', opacity: '1', interval: '100' },
+          end: { x: '-10', y: '0', offsety: '0', opacity: '1', interval: '100' },
+          frames: [0, 1],
+          repeat: '4',
+          next: [next(1)],
+        }),
+        anim({ id: 8, name: 'kick', frames: [2, 3], next: [next(1)] }),
+      ],
+    });
+  const ballAt = (x: number, y = FLOOR_Y + CFG.size - 14): Rect => ({
+    x,
+    y,
+    width: 14,
+    height: 14,
+  });
+  const walker = (cp: CompiledPack, x: number, flipped = false): SheepState => ({
+    ...spawn(cp, world(), CFG, 3).state,
+    x,
+    y: FLOOR_Y,
+    flipped,
+    entered: true,
+  });
+  const runAll = (cp: CompiledPack, s0: SheepState, w: World, ms: number) => {
+    let state = s0;
+    const started: string[] = [];
+    const kicks: { vx: number; vy: number }[] = [];
+    for (let t = 0; t < ms; t += 16) {
+      const u = update(cp, state, w, CFG, 16);
+      state = u.state;
+      started.push(...u.started);
+      kicks.push(...(u.kicks ?? []));
+    }
+    return { state, started, kicks };
+  };
+
+  it('turns towards a ball it notices and breaks into a run', () => {
+    const cp = withRun();
+    const w = world({ ball: ballAt(800) });
+    const r = runAll(cp, walker(cp, 100, false), w, 600); // facing left, ball is to the right
+    expect(r.started).toContain('run');
+    expect(r.state.flipped).toBe(true);
+    expect(r.state.x).toBeGreaterThan(100);
+  });
+
+  it('kicks the ball away from itself once it reaches it, then waits out the cooldown', () => {
+    const cp = withRun();
+    const s = walker(cp, 400, true); // facing right
+    const w = world({ ball: ballAt(400 + CFG.size + 5) });
+    const r = runAll(cp, s, w, 300);
+    expect(r.kicks.length).toBe(1);
+    expect(r.kicks[0].vx).toBeGreaterThan(350); // away to the right
+    expect(r.kicks[0].vy).toBeLessThan(0); // and up
+    expect(r.started).toContain('kick');
+    // Still there 300ms later: the cooldown stops a second kick straight away.
+    expect(runAll(cp, r.state, w, 300).kicks.length).toBe(0);
+  });
+
+  it('kicks to the left when the ball is on its left', () => {
+    const cp = withRun();
+    const w = world({ ball: ballAt(400 - 14 - 5) });
+    const r = runAll(cp, walker(cp, 400, false), w, 300);
+    expect(r.kicks[0].vx).toBeLessThan(-350);
+  });
+
+  it('scales the kick with the sprite scale', () => {
+    const cp = withRun();
+    const w = world({ ball: ballAt(400 + CFG.size + 5) });
+    const big = (() => {
+      let state = walker(cp, 400, true);
+      const kicks: { vx: number }[] = [];
+      for (let t = 0; t < 300; t += 16) {
+        const u = update(cp, state, w, { ...CFG, scale: 4 }, 16);
+        state = u.state;
+        kicks.push(...(u.kicks ?? []));
+      }
+      return kicks;
+    })();
+    expect(big[0].vx).toBeGreaterThan(4 * 350);
+  });
+
+  it('ignores a ball on another level, and a sheep that is asleep', () => {
+    const cp = withRun();
+    expect(
+      runAll(cp, walker(cp, 400, true), world({ ball: ballAt(800, 100) }), 600).started,
+    ).not.toContain('run');
+    const asleep = compilePack({
+      ...base,
+      animations: [
+        ...base.animations.map((a) => (a.id === 1 ? { ...a, name: 'sleep', repeat: '100' } : a)),
+        anim({ id: 7, name: 'run', frames: [0] }),
+      ],
+    });
+    const r = runAll(asleep, walker(asleep, 100), world({ ball: ballAt(800) }), 600);
+    expect(r.started).not.toContain('run');
+  });
+
+  it('runs the whole way: a sheep chasing a ball on the far side eventually kicks it', () => {
+    const cp = withRun();
+    const r = runAll(cp, walker(cp, 50, false), world({ ball: ballAt(700) }), 8000);
+    expect(r.kicks.length).toBeGreaterThan(0);
+  });
+
+  it('does nothing when there is no ball', () => {
+    const cp = withRun();
+    const r = runAll(cp, walker(cp, 400), world(), 2000);
+    expect(r.kicks).toEqual([]);
+    expect(r.started).not.toContain('kick');
+  });
+
+  it('still kicks if the pack has no kick animation (it just keeps running)', () => {
+    const cp = compilePack({
+      ...base,
+      animations: [...base.animations, anim({ id: 7, name: 'run', frames: [0], next: [next(1)] })],
+    });
+    const r = runAll(cp, walker(cp, 400, true), world({ ball: ballAt(400 + CFG.size + 5) }), 300);
+    expect(r.kicks.length).toBe(1);
+  });
+});
+
 describe('gravity and landing', () => {
   it('falls when there is no floor, then lands on the display bottom and resumes walking', () => {
     const cp = compiled();

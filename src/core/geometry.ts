@@ -55,6 +55,25 @@ export const isMaximised = (b: Rect, areas: readonly Rect[]): boolean =>
 export const obstaclesFrom = (windows: readonly WindowInfo[], areas: readonly Rect[]): Rect[] =>
   windows.map((w) => w.bounds).filter((b) => !isMaximised(b, areas));
 
+/** Move a `size` square so it lies inside the nearest display (a no-op if it already does). */
+export const clampIntoAreas = (
+  areas: readonly Rect[],
+  size: number,
+  x: number,
+  y: number,
+): { x: number; y: number } => {
+  if (areas.length === 0 || onScreen(areas, size, x, y)) return { x, y };
+  const nearest = areas.reduce((best, a) => {
+    const d = (r: Rect): number =>
+      Math.hypot(x + size / 2 - (r.x + r.width / 2), y + size / 2 - (r.y + r.height / 2));
+    return d(a) < d(best) ? a : best;
+  });
+  return {
+    x: clamp(x, nearest.x, Math.max(nearest.x, nearest.x + nearest.width - size)),
+    y: clamp(y, nearest.y, Math.max(nearest.y, nearest.y + nearest.height - size)),
+  };
+};
+
 export const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, n));
 
 /**

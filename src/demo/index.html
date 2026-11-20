@@ -118,6 +118,17 @@
         align-items: center;
         gap: 6px;
       }
+      .ball {
+        position: fixed;
+        left: 0;
+        top: 0;
+        z-index: 9;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 30%, #fff 0 38%, #d8dde8 70%, #8d95a8 100%);
+        box-shadow: 0 0 0 1px #4a5268;
+        touch-action: none;
+        cursor: grab;
+      }
       .sheep {
         position: fixed;
         left: 0;
@@ -165,6 +176,7 @@
         ><button id="add" type="button">Add sheep</button
         ><button id="remove" type="button">Remove</button> <output id="count">1</output></span
       >
+      <button id="kickabout" type="button" aria-pressed="false">Kick-about</button>
       <button id="pause" type="button">Pause</button>
       <button id="reset" type="button">Reset windows</button>
       <span id="status" aria-live="off"></span>
