@@ -9,12 +9,12 @@ TypeScript, with a functional, fully tested core that also powers a
 
 [![CI](https://github.com/milesburton/esheep/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-yellow.svg)](LICENSE)
-[![unit tests: 280/280 passing](https://img.shields.io/badge/unit_tests-280%2F280_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
-[![e2e tests: 53/53 passing](https://img.shields.io/badge/e2e_tests-53%2F53_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
-[![line coverage: 99.2%](https://img.shields.io/badge/line_coverage-99.2%25-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
-[![branch coverage: 95.7%](https://img.shields.io/badge/branch_coverage-95.7%25-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
-![source: 3,411 lines TypeScript](https://img.shields.io/badge/source-3%2C411_lines_TypeScript-blue)
-[![demo size: 256 kB](https://img.shields.io/badge/demo_size-256_kB-blue)](https://milesburton.github.io/esheep/)
+[![unit tests: 305/305 passing](https://img.shields.io/badge/unit_tests-305%2F305_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
+[![e2e tests: 64/64 passing](https://img.shields.io/badge/e2e_tests-64%2F64_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
+[![line coverage: 99.3%](https://img.shields.io/badge/line_coverage-99.3%25-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
+[![branch coverage: 95.4%](https://img.shields.io/badge/branch_coverage-95.4%25-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
+![source: 3,911 lines TypeScript](https://img.shields.io/badge/source-3%2C911_lines_TypeScript-blue)
+[![demo size: 265 kB](https://img.shields.io/badge/demo_size-265_kB-blue)](https://milesburton.github.io/esheep/)
 
 <!-- metrics:end -->
 
@@ -33,11 +33,6 @@ TypeScript, with a functional, fully tested core that also powers a
 <figure>
   <img src="docs/screenshots/demo-dual.png" alt="Two side-by-side monitors with the sheep on the right-hand one" width="720" />
   <figcaption>...and it wanders across multiple monitors.</figcaption>
-</figure>
-
-<figure>
-  <img src="docs/screenshots/demo-soccer.png" alt="Two teams of sheep glowing red and blue playing soccer, with a goal at each end and a scoreboard" width="720" />
-  <figcaption>Soccer: two teams, a goal at each end and a scoreboard.</figcaption>
 </figure>
 
 <figure>
