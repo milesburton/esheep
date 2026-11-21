@@ -14,10 +14,10 @@
         overflow: hidden;
         background: transparent;
       }
+      /* The canvas gets its exact pixel size from the renderer: never stretch it to the window, or a
+         wrongly sized window smears the sheep across the screen. */
       canvas {
         display: block;
-        width: 100vw;
-        height: 100vh;
       }
     </style>
   </head>

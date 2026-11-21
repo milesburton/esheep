@@ -355,3 +355,38 @@ can outlast a plain kick-about.
 
 Not done: passing, positions or a goalkeeper, a throw-in when the ball leaves play, and picking the
 teams yourself.
+
+## 28. Warped sheep on Windows, and a proper tray
+
+**The sheep stretched across the screen (reported with a screenshot from Windows).** The picture was a
+thin strip as wide as the screen with the sheep smeared along it: the sheep's _window_ had grown huge
+and the canvas was CSS-stretched (`100vw`/`100vh`) to fill it. The likely cause (inferred; there is no
+Windows machine here to reproduce on) is a known Electron-on-Windows quirk: with display scaling other
+than 100%, calling `setPosition` on a frameless transparent window rounds DIPs to physical pixels each
+time and the _size_ creeps, and we called it for every sheep on every frame. Three layers, so no single
+one has to be right: `move-window` now uses `setBounds` with the window's intended size (kept per window
+in `sheepSizes`), re-asserting the whole rectangle every move so it cannot drift; the canvas has a fixed
+pixel size and is never stretched; and the renderer checks `innerWidth/innerHeight` twice a second and asks
+the main process to restore the exact size if the OS has changed it (which also handles a dragged edge).
+`set-window-size` now compares width _and_ height and lifts `resizable` around the call (Linux ignores
+resizing otherwise). Tests force a window to 1800x30 from outside and assert it heals to 52x52, that the
+canvas stays 52 CSS px even while the window is wrong, and that the size never changes while walking. The
+actual Windows DPI creep cannot be reproduced on Linux.
+
+**The tray.** The icon was a generated white blob, resized to 16 px with `.resize()`, which also throws
+away any high-DPI variants. It is now the front-facing sheep (tile 10) from the original sheet, made by
+`npm run icons` (`scripts/make-icons.mjs`, which drives Chromium to cut the tile and key the magenta):
+`tray.png` 16 px plus `tray@1.25x/1.5x/2x/3x.png` for every Windows DPI step, which `createFromPath`
+picks up when the image is used as loaded; `assets/icon.png` for the settings window, and
+`build/icon.png` (512 px) which electron-builder turns into the `.ico`/`.icns`/Linux icon. The menu is a
+pure function, `buildTrayTemplate(state, actions)` in `src/main/trayMenu.ts`, so every label, tick and
+enabled state is unit-tested without Electron: Pause/Resume; **Sheep** (add, remove, a radio list of
+counts); **Appearance** (pack, size, speed radios); **Games**; checkboxes for sound and start-at-login
+(worded per platform, hidden in a development run); Settings; Downloads and updates; Quit. Choices go
+through the same `applyPrefs` as the Settings window, so they behave identically and persist. Start at
+login used to be forced on at every launch; it is now a preference (on at first run, then the user's
+choice). Windows shows nothing on a plain left-click and a menu set with `setContextMenu` goes stale, so
+there the tray pops up a freshly built menu for both buttons; other platforms replace the menu whenever
+something changes. Right-clicking a sheep opens the same menu with **Remove this sheep** on top (only the
+primary button grabs a sheep now). The packaged-app self-test also reports the tray icon (size, scale
+factors) and menu size, and the Windows CI job fails unless they are right.

@@ -121,7 +121,17 @@ The Electron end-to-end tests need a display. On a headless Linux box run them u
 
 ## Using it
 
-- **Tray icon**: Pause / Resume, Add sheep, Remove sheep, Play / Stop tag, Play / Stop soccer, Start / Stop kick-about, Settings…, Quit.
+- **Tray icon** (a sprite from the original sheet, with a sharp version for every display density).
+  Click or right-click it, or **right-click any sheep**, for the menu:
+  - **Pause / Resume**
+  - **Sheep**: add or remove one, or pick how many (1 to 12)
+  - **Appearance**: sprite pack, size (×1 to ×4) and speed
+  - **Games**: tag, soccer and kick-about
+  - **Sound on bounce** and **Start with Windows** (start at login)
+  - **Settings…**, **Downloads and updates** (opens the latest release) and **Quit**
+
+  Right-clicking a sheep adds **Remove this sheep** at the top.
+
 - **Grab**: press on the sheep and hold. It dangles. Move to carry it.
 - **Drop**: release while the pointer is still, and it falls under gravity.
 - **Toss**: release mid-flick. Throw speed is capped at 3,200 px/s.

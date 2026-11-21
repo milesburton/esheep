@@ -78,7 +78,10 @@ const run = async (): Promise<void> => {
   api.onPrefsChanged((p) => {
     prefs = p;
   });
-  api.setWindowSize(created.windowSize());
+  const side = created.windowSize();
+  canvas.style.width = `${side}px`;
+  canvas.style.height = `${side}px`;
+  api.setWindowSize(side);
   created.setPaused(live.paused);
   live.stage = created;
 
@@ -126,7 +129,13 @@ const run = async (): Promise<void> => {
       setClickThrough(!created.hit(e.clientX, e.clientY));
     }
   });
+  // Right-click on the sheep itself opens the same menu as the tray icon (plus "Remove this sheep").
+  canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (created.hit(e.clientX, e.clientY)) api.showMenu();
+  });
   canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return; // only the primary button grabs; right-click opens the menu
     if (clickThrough || !created.hit(e.clientX, e.clientY)) return;
     canvas.setPointerCapture(e.pointerId);
     created.down({ x: e.screenX, y: e.screenY }, e.timeStamp);
@@ -140,7 +149,15 @@ const run = async (): Promise<void> => {
   canvas.addEventListener('pointercancel', end);
 
   let last = performance.now();
+  let lastCheck = 0;
   const frame = (now: number): void => {
+    // If the OS has made the window a different size from the sheep (display scaling, a dragged edge,
+    // a driver quirk), say so: the main process puts it back. Twice a second is plenty.
+    if (now - lastCheck > 500) {
+      lastCheck = now;
+      if (Math.abs(window.innerWidth - side) > 2 || Math.abs(window.innerHeight - side) > 2)
+        api.setWindowSize(side);
+    }
     created.setPixelRatio(window.devicePixelRatio); // follows the window between mixed-DPI displays
     created.tick(Math.min(now - last, 100));
     last = now;

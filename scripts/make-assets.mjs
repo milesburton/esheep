@@ -1,6 +1,5 @@
 // Generates all bundled art with no dependencies (original work, safe to redistribute):
 //   assets/sheep.png                     8-frame walk strip for the built-in bounce sheep
-//   assets/tray.png                      32x32 tray icon
 //   assets/packs/woolly/animations.xml   a full classic-format pack (walk, sleep, drag, toss, ...)
 import fs from 'node:fs';
 import path from 'node:path';
@@ -74,15 +73,7 @@ const walkFrames = Array.from({ length: 8 }, (_, i) =>
   write('sheep.png', encodePng(512, 64, strip.buf));
 }
 
-// Tray icon.
-{
-  const c = canvas(32, 32);
-  c.ellipse(14, 16, 12, 11, EDGE);
-  c.ellipse(14, 16, 11, 10, WOOL);
-  c.ellipse(24, 15, 6, 7, DARK);
-  c.rect(26, 13, 2, 2, WHITE);
-  write('tray.png', encodePng(32, 32, c.buf));
-}
+// (The tray and app icons are made from a sprite by scripts/make-icons.mjs: `npm run icons`.)
 
 // "woolly" classic pack: full 118-pose sheet and every classic animation.
 write('packs/woolly/animations.xml', buildWoolly());

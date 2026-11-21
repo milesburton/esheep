@@ -123,6 +123,7 @@ test.describe('sheep window', () => {
         'onResume',
         'savePrefs',
         'setWindowSize',
+        'showMenu',
         'setClickThrough',
       ].sort(),
     );
@@ -148,59 +149,165 @@ test.describe('sheep window', () => {
 });
 
 test.describe('tray menu and pause', () => {
-  const labels = (): Promise<string[]> =>
-    app.evaluate(() =>
-      (globalThis as unknown as { __esheep: { trayLabels(): string[] } }).__esheep.trayLabels(),
+  type Seam = {
+    trayLabels(): string[];
+    trayClick(label: string, fromSheep?: boolean): void;
+    trayChecked(label: string): boolean | null;
+    trayIcon(): { empty: boolean; size: { width: number; height: number }; scaleFactors: number[] };
+    togglePause(): void;
+    sheepCount(): number;
+  };
+  const seam = <T>(fn: (s: Seam) => T): Promise<T> =>
+    app.evaluate(
+      (_e, src) =>
+        new Function('s', `return (${src})(s)`)(
+          (globalThis as unknown as { __esheep: Seam }).__esheep,
+        ) as unknown,
+      fn.toString(),
+    ) as Promise<T>;
+  const labels = (): Promise<string[]> => seam((s) => s.trayLabels());
+  const click = (label: string, fromSheep = false): Promise<void> =>
+    app.evaluate(
+      (_e, [l, f]) =>
+        (
+          globalThis as unknown as { __esheep: { trayClick(l: string, f: boolean): void } }
+        ).__esheep.trayClick(l as string, f as boolean),
+      [label, fromSheep],
     );
-  const toggle = (): Promise<void> =>
+  // Read in the main process: the sheep page reloads whenever the pack or size changes.
+  type StoredPrefs = { scale: number; pack: string; sound: boolean; count: number };
+  const prefs = (): Promise<StoredPrefs> =>
     app.evaluate(() =>
-      (globalThis as unknown as { __esheep: { togglePause(): void } }).__esheep.togglePause(),
+      (globalThis as unknown as { __esheep: { prefs(): StoredPrefs } }).__esheep.prefs(),
     );
 
-  test('offers Pause, Settings and Quit', async () => {
+  test('is comprehensive: sheep, appearance, games, options, settings, updates and quit', async () => {
     await sheepPage();
-    expect(await labels()).toEqual([
-      'Pause',
-      'Add sheep',
-      'Remove sheep',
-      'Play tag',
-      'Play soccer',
-      'Start kick-about',
-      'Settings…',
-      'Quit',
-    ]);
+    expect(await labels()).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^eSheep \d+\.\d+\.\d+$/),
+        'Pause',
+        'Add sheep',
+        'Remove sheep',
+        '1 sheep',
+        '12 sheep',
+        'Original eSheep',
+        'Woolly (generated)',
+        'Bouncing sheep (simple)',
+        '×1 (native)',
+        '×4',
+        '0.5×',
+        '2×',
+        'Play tag',
+        'Play soccer',
+        'Start kick-about',
+        'Sound on bounce',
+        'Settings…',
+        'Downloads and updates',
+        'Quit',
+      ]),
+    );
+  });
+
+  test('uses a sprite from the original sheet as its icon, with a sharp version for every display density', async () => {
+    await sheepPage();
+    const icon = await seam((s) => s.trayIcon());
+    expect(icon.empty).toBe(false);
+    expect(icon.size).toEqual({ width: 16, height: 16 });
+    // tray@1.25x / 1.5x / 2x / 3x.png sit next to tray.png: all of them must have been picked up.
+    expect(icon.scaleFactors).toEqual(expect.arrayContaining([1, 1.25, 1.5, 2, 3]));
   });
 
   test('Pause freezes the sheep and Resume releases it', async () => {
     await sheepPage();
-    await toggle();
-    expect(await labels()).toEqual([
-      'Resume',
-      'Add sheep',
-      'Remove sheep',
-      'Play tag',
-      'Play soccer',
-      'Start kick-about',
-      'Settings…',
-      'Quit',
-    ]);
+    expect(await labels()).toContain('Pause');
+    await seam((s) => s.togglePause());
+    expect(await labels()).toContain('Resume');
+    expect(await labels()).not.toContain('Pause');
     await new Promise((r) => setTimeout(r, 300)); // let the pause message land
     const frozen = await sheepBounds();
     await new Promise((r) => setTimeout(r, 600));
     expect(await sheepBounds()).toEqual(frozen);
 
-    await toggle();
-    expect(await labels()).toEqual([
-      'Pause',
-      'Add sheep',
-      'Remove sheep',
-      'Play tag',
-      'Play soccer',
-      'Start kick-about',
-      'Settings…',
-      'Quit',
-    ]);
+    await click('Resume'); // the menu item itself, as a user would
+    expect(await labels()).toContain('Pause');
     await expect.poll(async () => (await sheepBounds()).x, { timeout: 5000 }).not.toBe(frozen.x);
+  });
+
+  test('choices in the menu really change the app (size, sprite pack, sound, count)', async () => {
+    await sheepPage();
+    await click('×2');
+    await expect.poll(async () => (await prefs()).scale).toBe(2);
+    await click('Woolly (generated)');
+    await expect.poll(async () => (await prefs()).pack, { timeout: 10_000 }).toBe('woolly');
+    await click('Sound on bounce');
+    await expect.poll(async () => (await prefs()).sound).toBe(true);
+    expect(await seam((s) => s.trayChecked('Sound on bounce'))).toBe(true);
+    await click('3 sheep');
+    await expect.poll(() => seam((s) => s.sheepCount()), { timeout: 10_000 }).toBe(3);
+    // The menu reflects the state it just changed.
+    expect(await seam((s) => s.trayChecked('×2'))).toBe(true);
+    expect(await seam((s) => s.trayChecked('Woolly (generated)'))).toBe(true);
+    expect(await seam((s) => s.trayChecked('3 sheep'))).toBe(true);
+    expect(await seam((s) => s.trayChecked('×1 (native)'))).toBe(false);
+  });
+
+  test('a pack and a size picked from the menu are kept after a restart', async () => {
+    await sheepPage();
+    await click('Original eSheep');
+    await click('×3');
+    await expect.poll(async () => (await prefs()).scale).toBe(3);
+    const config = JSON.parse(fs.readFileSync(path.join(userData, 'config.json'), 'utf8'));
+    expect(config).toMatchObject({ pack: 'original', scale: 3 });
+  });
+
+  test('right-clicking a sheep offers "Remove this sheep" on top of the usual menu', async () => {
+    await sheepPage();
+    await click('3 sheep');
+    await expect.poll(() => seam((s) => s.sheepCount())).toBe(3);
+    await click('Remove this sheep', true);
+    await expect.poll(() => seam((s) => s.sheepCount())).toBe(2);
+    await expect.poll(async () => (await prefs()).count).toBe(2); // and it stays removed next time
+  });
+
+  test('a real right-click on the sheep asks for the menu; a left-click does not (it grabs)', async () => {
+    const page = await sheepPage();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            document.querySelector('canvas')!.getContext('2d')!.getImageData(64, 70, 1, 1).data[3],
+        ),
+      )
+      .toBeGreaterThan(16);
+    await expect.poll(async () => (await sheepBounds()).width).toBe(128); // the bouncing sheep's window
+    const requests = (): Promise<number> =>
+      app.evaluate(() =>
+        (globalThis as unknown as { __esheep: { menuRequests(): number } }).__esheep.menuRequests(),
+      );
+    expect(await requests()).toBe(0);
+    await page.mouse.move(64, 70);
+    await new Promise((r) => setTimeout(r, 300)); // click-through is switched off over the sprite
+    await page.mouse.click(64, 70, { button: 'right' });
+    await expect.poll(requests).toBe(1);
+    await page.mouse.click(64, 70, { button: 'left' });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await requests()).toBe(1);
+  });
+
+  test('"Remove this sheep" never removes the last sheep', async () => {
+    await sheepPage();
+    expect(await seam((s) => s.sheepCount())).toBe(1);
+    await click('Remove this sheep', true);
+    expect(await seam((s) => s.sheepCount())).toBe(1);
+  });
+
+  test('the games are greyed out for the bouncing sheep, with the reason shown', async () => {
+    await sheepPage(); // this suite starts on the bouncing sheep
+    expect(await labels()).toContain('Tag and soccer need a classic sprite pack');
+    await click('Original eSheep');
+    await expect.poll(async () => (await prefs()).pack, { timeout: 10_000 }).toBe('original');
+    expect(await labels()).not.toContain('Tag and soccer need a classic sprite pack');
   });
 });
 
@@ -613,6 +720,9 @@ test.describe('self-test (what CI runs against a packaged build)', () => {
       nativeWindows: process.platform === 'linux' ? false : expect.any(Boolean),
     });
     expect(report.packs).toEqual(expect.arrayContaining(['builtin', 'woolly', 'original']));
+    expect(report.trayIcon).toMatchObject({ empty: false, size: { width: 16, height: 16 } });
+    expect(report.trayIcon.scaleFactors).toEqual(expect.arrayContaining([1, 2, 3]));
+    expect(report.trayMenuItems).toBeGreaterThan(20);
     expect(report.version).toBe(JSON.parse(fs.readFileSync('package.json', 'utf8')).version);
     fs.rmSync(path.dirname(out), { recursive: true, force: true });
   });
@@ -740,6 +850,81 @@ test.describe('first run and upgrades (which sheep you get)', () => {
     await expect(settings.locator('#pack')).toHaveValue('original');
     await expect(settings.locator('#pack option:checked')).toHaveText('Original eSheep');
     void page;
+  });
+});
+
+test.describe('the sheep window keeps its size (it must never smear across the screen)', () => {
+  const CLASSIC = { speed: 1, sound: false, pack: 'original', count: 1, scale: 1, version: 2 };
+  const relaunch = async (): Promise<Page> => {
+    await app.close();
+    fs.rmSync(userData, { recursive: true, force: true });
+    app = await launch(CLASSIC);
+    return sheepPage();
+  };
+  const bounds = async (): Promise<{ width: number; height: number }> => {
+    const b = await sheepBounds();
+    return { width: b.width, height: b.height };
+  };
+
+  test('a window the OS has made the wrong size is put right again', async () => {
+    const page = await relaunch();
+    await expect.poll(async () => (await bounds()).width, { timeout: 15_000 }).toBe(52);
+    // What a Windows display-scaling quirk looked like to the user: a window across the screen, very flat.
+    await app.evaluate(({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows().find((x) =>
+        x.webContents.getURL().endsWith('/app/index.html'),
+      );
+      w?.setResizable(true);
+      w?.setSize(1800, 30);
+    });
+    expect((await bounds()).width).toBeGreaterThan(500); // it really did go wrong
+    // The sheep notices (twice a second) and the main process restores the exact size.
+    await expect.poll(async () => bounds(), { timeout: 5_000 }).toEqual({ width: 52, height: 52 });
+    void page;
+  });
+
+  test('the canvas is never stretched to fit the window, even while the window is wrong', async () => {
+    const page = await relaunch();
+    await expect.poll(async () => (await bounds()).width, { timeout: 15_000 }).toBe(52);
+    await app.evaluate(({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows().find((x) =>
+        x.webContents.getURL().endsWith('/app/index.html'),
+      );
+      w?.setResizable(true);
+      w?.setSize(1800, 30);
+    });
+    // Straight away, before any healing: the sprite keeps its own size (52 CSS px), it is not scaled to 1800x30.
+    const css = await page.evaluate(() => {
+      const c = document.querySelector('canvas') as HTMLCanvasElement;
+      const r = c.getBoundingClientRect();
+      return { w: Math.round(r.width), h: Math.round(r.height) };
+    });
+    expect(css).toEqual({ w: 52, h: 52 });
+  });
+
+  test('moving never changes the size: it stays exactly 52x52 for as long as the sheep walks', async () => {
+    await relaunch();
+    await expect.poll(async () => (await bounds()).width, { timeout: 15_000 }).toBe(52);
+    // Sample the real window many times while the sheep walks about, in the main process.
+    const sizes = await app.evaluate(async ({ BrowserWindow }) => {
+      const seen = new Set<string>();
+      const moved = new Set<number>();
+      const end = Date.now() + 6_000;
+      while (Date.now() < end) {
+        const w = BrowserWindow.getAllWindows().find((x) =>
+          x.webContents.getURL().endsWith('/app/index.html'),
+        );
+        const b = w?.getBounds();
+        if (b) {
+          seen.add(`${b.width}x${b.height}`);
+          moved.add(b.x);
+        }
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return { sizes: [...seen], positions: moved.size };
+    });
+    expect(sizes.sizes).toEqual(['52x52']);
+    expect(sizes.positions).toBeGreaterThan(1); // it did move, so this was a real test
   });
 });
 

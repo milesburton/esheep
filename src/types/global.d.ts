@@ -115,6 +115,8 @@ interface ElectronAPI {
   ballGrab: () => void;
   ballMove: (x: number, y: number) => void;
   ballRelease: (vx: number, vy: number) => void;
+  /** Right-click on a sheep: ask the main process to pop up the menu. */
+  showMenu: () => void;
   /** Window bounds of every other sheep window. */
   getOtherSheep: () => Promise<Rect[]>;
 }

@@ -88,6 +88,9 @@ jobs:
           if (-not $r.rendered) { throw 'the sheep window did not render' }
           if (-not $r.nativeWindows) { throw 'node-window-manager is not available in the packaged app' }
           if ($r.sheepWindows -lt 1) { throw 'no sheep window was created' }
+          if ($r.trayIcon.empty) { throw 'the tray icon did not load' }
+          if ($r.trayIcon.scaleFactors -notcontains 2) { throw 'the high-DPI tray icons (tray@2x.png) were not found' }
+          if ($r.trayMenuItems -lt 20) { throw "the tray menu looks incomplete ($($r.trayMenuItems) items)" }
 
       - uses: actions/upload-artifact@v7
         with:

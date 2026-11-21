@@ -1,13 +1,14 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, Tray } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, shell, Tray } from 'electron';
 import Store from 'electron-store';
 import * as fs from 'fs';
 import * as path from 'path';
 import { WINDOW_PAD, obstaclesFrom } from '../core/geometry';
-import { enableAutoLaunch } from './autolaunch';
+import { autoLaunchAvailable, isAutoLaunchEnabled, setAutoLaunch } from './autolaunch';
 import { createKickAbout } from './kickabout';
 import { migratePrefs } from './prefs';
 import { createSoccerPlay, MATCH_LIMIT_MS } from './soccerplay';
 import { createTagPlay } from './tagplay';
+import { buildTrayTemplate, flattenLabels, type TrayActions, type TrayState } from './trayMenu';
 import { BUILTIN, listPacks, loadPack } from './pack';
 import { createWindowSource, type NativeWindow, type WindowManagerLike } from './windows';
 
@@ -45,7 +46,9 @@ const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.m
 
 // NB `version` is deliberately not a default: electron-store would fill it in for an existing install
 // and the migration would think it had already run.
-const store = new Store<Prefs & { version?: number }>({ defaults: DEFAULT_PREFS });
+const store = new Store<Prefs & { version?: number; autoLaunch?: boolean }>({
+  defaults: DEFAULT_PREFS,
+});
 const preload = path.join(__dirname, '..', 'preload', 'preload.js');
 const page = (name: string): string => path.join(__dirname, '..', 'web', 'app', name);
 const asset = (name: string): string => path.join(__dirname, '..', '..', 'assets', name);
@@ -55,6 +58,8 @@ const migrated = migratePrefs(store, listPacks(asset('')));
 if (migrated) console.log(`prefs: moved from the bouncing sheep to the "${migrated}" pack`);
 
 const sheepWins: BrowserWindow[] = [];
+/** Each sheep window's intended side in px, keyed by webContents id (see `move-window`). */
+const sheepSizes = new Map<number, number>();
 let settingsWin: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let paused = false;
@@ -89,9 +94,12 @@ const createSheepWindow = (): void => {
   // Click-through; the renderer turns it off while the pointer is over the sheep (grab / toss).
   win.setIgnoreMouseEvents(true, { forward: true });
   void win.loadFile(page('index.html'));
+  const id = win.webContents.id;
+  sheepSizes.set(id, SIZE);
   win.on('closed', () => {
     const i = sheepWins.indexOf(win);
     if (i >= 0) sheepWins.splice(i, 1);
+    sheepSizes.delete(id);
   });
   sheepWins.push(win);
 };
@@ -102,7 +110,7 @@ const setSheepCount = (n: number): void => {
   while (sheepWins.length < target) createSheepWindow();
   while (sheepWins.length > target) sheepWins.pop()?.destroy();
   if (store.get('count') !== target) store.set('count', target);
-  tray?.setContextMenu(buildTrayMenu());
+  refreshTray();
 };
 
 const broadcast = (channel: string, ...args: unknown[]): void => {
@@ -118,6 +126,7 @@ const openSettings = (): void => {
     width: 320,
     height: 260,
     title: 'eSheep settings',
+    icon: asset('icon.png'),
     autoHideMenuBar: true,
     resizable: false,
     webPreferences: { preload, contextIsolation: true, nodeIntegration: false, sandbox: true },
@@ -131,7 +140,7 @@ const openSettings = (): void => {
 const togglePause = (): void => {
   paused = !paused;
   broadcast(paused ? 'pause' : 'resume');
-  tray?.setContextMenu(buildTrayMenu());
+  refreshTray();
 };
 
 // Every sheep renderer polls these, and the ball loop needs them at 60 Hz, so they are memoised briefly.
@@ -173,7 +182,7 @@ const stopKickAbout = (): void => {
   ballWin = null;
   if (w && !w.isDestroyed()) w.destroy();
   if (soccer.active()) stopSoccer(); // a match is nothing without its ball
-  tray?.setContextMenu(buildTrayMenu());
+  refreshTray();
 };
 
 const createBallWindow = (): BrowserWindow => {
@@ -217,7 +226,7 @@ const startKickAbout = (limitMs?: number): void => {
       ballWin.setBounds({ x: Math.round(b.x), y: Math.round(b.y), width: b.size, height: b.size });
     }
   }, BALL_STEP_MS);
-  tray?.setContextMenu(buildTrayMenu());
+  refreshTray();
 };
 
 // ---- tag: the game state lives here; each sheep window asks what it should do -----------------------
@@ -248,7 +257,7 @@ const stopTag = (): void => {
   if (tagTimer) clearInterval(tagTimer);
   tagTimer = null;
   tagPlay.stop();
-  tray?.setContextMenu(buildTrayMenu());
+  refreshTray();
 };
 
 const startTag = (): void => {
@@ -259,7 +268,7 @@ const startTag = (): void => {
   tagTimer = setInterval(() => {
     if (!paused) tagPlay.tick();
   }, TAG_STEP_MS);
-  tray?.setContextMenu(buildTrayMenu());
+  refreshTray();
 };
 
 const toggleTag = (): void => (tagPlay.active() ? stopTag() : startTag());
@@ -327,7 +336,7 @@ function stopSoccer(): void {
   const was = soccer.active();
   soccer.stop();
   if (was) stopKickAbout(); // takes the ball (and its window) away
-  tray?.setContextMenu(buildTrayMenu());
+  refreshTray();
 }
 
 const startSoccer = (): void => {
@@ -351,48 +360,93 @@ const startSoccer = (): void => {
     if (!soccer.active()) return stopSoccer(); // the final score has been shown, or the ball ran out
     placeOverlays();
   }, SOCCER_STEP_MS);
-  tray?.setContextMenu(buildTrayMenu());
+  refreshTray();
 };
 
 const toggleSoccer = (): void => (soccer.active() ? stopSoccer() : startSoccer());
 
-function buildTrayMenu(): Menu {
-  return Menu.buildFromTemplate([
-    { label: paused ? 'Resume' : 'Pause', click: togglePause },
-    {
-      label: 'Add sheep',
-      enabled: sheepWins.length < MAX_SHEEP,
-      click: () => setSheepCount(sheepWins.length + 1),
-    },
-    {
-      label: 'Remove sheep',
-      enabled: sheepWins.length > 1,
-      click: () => setSheepCount(sheepWins.length - 1),
-    },
-    {
-      label: tagPlay.active() ? 'Stop tag' : 'Play tag',
-      enabled: tagPlay.active() || store.get('pack') !== BUILTIN,
-      click: toggleTag,
-    },
-    {
-      label: soccer.active() ? 'Stop soccer match' : 'Play soccer',
-      enabled: soccer.active() || store.get('pack') !== BUILTIN,
-      click: toggleSoccer,
-    },
-    {
-      label: kickAbout.active() ? 'Stop kick-about' : 'Start kick-about',
-      click: toggleKickAbout,
-    },
-    { label: 'Settings…', click: openSettings },
-    { type: 'separator' },
-    { label: 'Quit', click: () => app.quit() },
-  ]);
+const RELEASES_URL = 'https://github.com/milesburton/esheep/releases/latest';
+
+/** What the menu needs to draw itself, read fresh every time it is opened. */
+const trayState = (fromSheep: boolean): TrayState => ({
+  version: app.getVersion(),
+  platform: process.platform,
+  paused,
+  sheepCount: sheepWins.length,
+  maxSheep: MAX_SHEEP,
+  pack: store.get('pack'),
+  packs: listPacks(asset('')),
+  scale: store.get('scale'),
+  maxScale: MAX_SCALE,
+  speed: store.get('speed'),
+  sound: store.get('sound'),
+  autoLaunch: autoLaunchAvailable() ? isAutoLaunchEnabled() : null,
+  tagActive: tagPlay.active(),
+  soccerActive: soccer.active(),
+  kickAboutActive: kickAbout.active(),
+  fromSheep,
+});
+
+/** What each menu item does. Choices go through `applyPrefs`, exactly like the Settings window. */
+const trayActions = (from?: BrowserWindow): TrayActions => ({
+  togglePause,
+  setSheepCount: (n) => applyPrefs({ ...loadPrefs(), count: n }),
+  removeThisSheep: () => {
+    const i = from ? sheepWins.indexOf(from) : -1;
+    if (!from || i < 0 || sheepWins.length < 2) return;
+    sheepWins.splice(i, 1);
+    from.destroy();
+    store.set('count', sheepWins.length);
+    refreshTray();
+  },
+  setPack: (pack) => applyPrefs({ ...loadPrefs(), pack }),
+  setScale: (scale) => applyPrefs({ ...loadPrefs(), scale }),
+  setSpeed: (speed) => applyPrefs({ ...loadPrefs(), speed }),
+  setSound: (sound) => applyPrefs({ ...loadPrefs(), sound }),
+  setAutoLaunch: (on) => {
+    store.set('autoLaunch', on);
+    setAutoLaunch(on);
+    refreshTray();
+  },
+  toggleTag,
+  toggleSoccer,
+  toggleKickAbout,
+  openSettings,
+  openReleases: () => void shell.openExternal(RELEASES_URL),
+  quit: () => app.quit(),
+});
+
+/** The tray menu, or (with `from`) the menu you get by right-clicking that sheep. */
+function buildTrayMenu(from?: BrowserWindow): Menu {
+  return Menu.buildFromTemplate(buildTrayTemplate(trayState(!!from), trayActions(from)));
 }
 
+/**
+ * Keep the tray in step with the app. Windows rebuilds the menu fresh on every click (see createTray), so
+ * it can never be stale; elsewhere the tray owns the menu, so it is replaced whenever something changes.
+ */
+function refreshTray(): void {
+  if (!tray) return;
+  tray.setToolTip(
+    `eSheep: ${sheepWins.length} ${sheepWins.length === 1 ? 'sheep' : 'sheep'}${paused ? ' (paused)' : ''}`,
+  );
+  if (process.platform !== 'win32') tray.setContextMenu(buildTrayMenu());
+}
+
+let trayImage: Electron.NativeImage | null = null;
 const createTray = (): void => {
-  tray = new Tray(nativeImage.createFromPath(asset('tray.png')).resize({ width: 16, height: 16 }));
-  tray.setToolTip('eSheep');
-  tray.setContextMenu(buildTrayMenu());
+  // A sprite from the original sheet. createFromPath also picks up tray@1.25x/1.5x/2x/3x.png for
+  // high-DPI displays, which `.resize()` would throw away, so the image is used as loaded.
+  trayImage = nativeImage.createFromPath(asset('tray.png'));
+  tray = new Tray(trayImage);
+  if (process.platform === 'win32') {
+    // Windows shows nothing on a plain left-click, and a menu set with setContextMenu goes stale; pop up a
+    // freshly built one for either button.
+    const pop = (): void => tray?.popUpContextMenu(buildTrayMenu());
+    tray.on('click', pop);
+    tray.on('right-click', pop);
+  }
+  refreshTray();
 };
 
 ipcMain.handle('get-windows', () => windowList());
@@ -427,20 +481,30 @@ ipcMain.handle('load-pack', () => loadPack(asset(''), store.get('pack')));
 ipcMain.on('set-click-through', (e, ignore: boolean) => {
   BrowserWindow.fromWebContents(e.sender)?.setIgnoreMouseEvents(Boolean(ignore), { forward: true });
 });
+// Move a sheep: always with `setBounds` and the window's intended size, never `setPosition`. On Windows
+// with display scaling (125%, 150%...), repeated `setPosition` calls on a frameless transparent window
+// round DIPs to physical pixels each time and the window's *size* creeps (the sheep ends up smeared
+// across the screen). Re-asserting the whole rectangle every move cannot drift.
 ipcMain.on('move-window', (e, x: number, y: number) => {
-  if (Number.isFinite(x) && Number.isFinite(y))
-    BrowserWindow.fromWebContents(e.sender)?.setPosition(Math.round(x), Math.round(y));
+  const win = BrowserWindow.fromWebContents(e.sender);
+  if (!win || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const n = sheepSizes.get(win.webContents.id) ?? SIZE;
+  win.setBounds({ x: Math.round(x), y: Math.round(y), width: n, height: n });
 });
 ipcMain.on('set-window-size', (e, size: number) => {
   const win = BrowserWindow.fromWebContents(e.sender);
   const n = Math.round(clamp(Number(size) || SIZE, 16, 512));
-  if (!win || win.getBounds().width === n) return;
-  // Linux ignores setSize on non-resizable windows, so lift the restriction around the call.
+  if (!win) return;
+  sheepSizes.set(win.webContents.id, n);
+  const b = win.getBounds();
+  if (b.width === n && b.height === n) return;
+  // Linux ignores resizing a non-resizable window, so lift the restriction around the call.
   win.setResizable(true);
-  win.setSize(n, n);
+  win.setBounds({ x: b.x, y: b.y, width: n, height: n });
   win.setResizable(false);
 });
-ipcMain.on('save-prefs', (_e, prefs: Prefs) => {
+/** Validate and apply preferences (from the Settings window or the tray menu) and make them take effect. */
+function applyPrefs(prefs: Prefs): void {
   const packs = listPacks(asset(''));
   const clean: Prefs = {
     speed: clamp(Number(prefs.speed) || 1, 0.5, 2),
@@ -458,6 +522,18 @@ ipcMain.on('save-prefs', (_e, prefs: Prefs) => {
     for (const w of sheepWins) w.webContents.reload(); // renderers reload the new pack on start
   } else broadcast('prefs-changed', clean);
   setSheepCount(clean.count);
+  refreshTray();
+}
+ipcMain.on('save-prefs', (_e, prefs: Prefs) => applyPrefs(prefs));
+
+// Right-click on a sheep: the same menu as the tray, plus "Remove this sheep".
+let menuRequests = 0; // how many times a sheep asked for the menu (the tests count these)
+ipcMain.on('show-menu', (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  if (!win) return;
+  menuRequests += 1;
+  // A real popup menu is a GTK window under the test display; the tests only need the request.
+  if (process.env.ESHEEP_TEST !== '1') buildTrayMenu(win).popup({ window: win });
 });
 
 // Test seam: lets Playwright drive the tray menu without a real tray. Off in production.
@@ -466,10 +542,43 @@ if (process.env.ESHEEP_TEST === '1') {
     __esheep: {
       togglePause,
       openSettings,
-      trayLabels: () =>
-        buildTrayMenu()
-          .items.map((i) => i.label)
-          .filter(Boolean),
+      // Every label in the menu, submenus included.
+      trayLabels: () => flattenLabels(buildTrayTemplate(trayState(false), trayActions())),
+      /** Click a menu item by its label, exactly as the user would. */
+      trayClick: (label: string, fromSheep = false) => {
+        const win = fromSheep ? sheepWins[0] : undefined;
+        const find = (items: Electron.MenuItem[]): Electron.MenuItem | undefined => {
+          for (const i of items) {
+            if (i.label === label) return i;
+            const hit = i.submenu ? find(i.submenu.items) : undefined;
+            if (hit) return hit;
+          }
+          return undefined;
+        };
+        const item = find(buildTrayMenu(win).items);
+        if (!item) throw new Error(`no tray menu item "${label}"`);
+        item.click();
+      },
+      /** Is a checkable item ticked? */
+      trayChecked: (label: string) => {
+        const find = (items: Electron.MenuItem[]): Electron.MenuItem | undefined => {
+          for (const i of items) {
+            if (i.label === label) return i;
+            const hit = i.submenu ? find(i.submenu.items) : undefined;
+            if (hit) return hit;
+          }
+          return undefined;
+        };
+        return find(buildTrayMenu().items)?.checked ?? null;
+      },
+      /** The stored preferences, read in the main process (a sheep page may be mid-reload). */
+      prefs: () => ({ ...loadPrefs(), autoLaunch: store.get('autoLaunch') }),
+      menuRequests: () => menuRequests,
+      trayIcon: () => ({
+        empty: trayImage?.isEmpty() ?? true,
+        size: trayImage?.getSize() ?? { width: 0, height: 0 },
+        scaleFactors: trayImage?.getScaleFactors() ?? [],
+      }),
       isPaused: () => paused,
       sheepCount: () => sheepWins.length,
       addSheep: () => setSheepCount(sheepWins.length + 1),
@@ -507,6 +616,13 @@ if (process.env.ESHEEP_TEST === '1') {
   });
 }
 
+/** First run turns "start at login" on (as before); after that the tray checkbox is the user's choice. */
+const startAtLogin = (): void => {
+  const stored = store.get('autoLaunch');
+  if (stored === undefined) store.set('autoLaunch', true);
+  setAutoLaunch(stored ?? true);
+};
+
 /**
  * `ESHEEP_SELFTEST=<file>`: start normally, wait for the first sheep to render, write a JSON report
  * (did the page load, is the native window module available, ...) to <file>, then quit. Lets CI prove
@@ -524,6 +640,13 @@ const runSelfTest = (out: string): void => {
       visibleWindows: getVisibleWindows().length,
       sheepWindows: sheepWins.length,
       packs: listPacks(asset('')),
+      // The tray icon and menu, so CI can prove the packaged app loaded its icons and built its menu.
+      trayIcon: {
+        empty: trayImage?.isEmpty() ?? true,
+        size: trayImage?.getSize() ?? { width: 0, height: 0 },
+        scaleFactors: trayImage?.getScaleFactors() ?? [],
+      },
+      trayMenuItems: flattenLabels(buildTrayTemplate(trayState(false), trayActions())).length,
     };
     try {
       result.rendered = Boolean(
@@ -551,7 +674,7 @@ if (!app.requestSingleInstanceLock()) {
     setSheepCount(store.get('count'));
     // A self-test run (CI proving a packaged build starts) must not touch login items.
     if (process.env.ESHEEP_SELFTEST) runSelfTest(process.env.ESHEEP_SELFTEST);
-    else enableAutoLaunch();
+    else startAtLogin();
   });
   // Tray app: don't quit when the settings window closes.
   app.on('window-all-closed', () => {

@@ -13,6 +13,7 @@ const api: ElectronAPI = {
   listPacks: () => ipcRenderer.invoke('list-packs'),
   isPaused: () => ipcRenderer.invoke('is-paused'),
   getOtherSheep: () => ipcRenderer.invoke('get-other-sheep'),
+  showMenu: () => ipcRenderer.send('show-menu'),
   getTeam: () => ipcRenderer.invoke('get-team'),
   getMatch: () => ipcRenderer.invoke('get-match'),
   getBall: () => ipcRenderer.invoke('get-ball'),
