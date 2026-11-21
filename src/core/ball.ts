@@ -45,3 +45,36 @@ export const kickBall = (b: Ball, k: { vx: number; vy: number }): Ball => ({
   vx: k.vx,
   vy: k.vy,
 });
+
+/** A ball that has not moved for this long is taken to be stuck (on a perch nobody can reach, say). */
+export const REST_RESET_MS = 6000;
+
+/** Milliseconds the ball has now been at rest: `prev` plus this step if it is still, else back to zero. */
+export const restTime = (prev: number, b: Ball, dtMs: number): number =>
+  Math.hypot(b.vx, b.vy) <= ROLL_STOP ? prev + Math.max(0, dtMs) : 0;
+
+/**
+ * Where to (re)start a ball: dropped from near the top of the primary display, in the column closest to
+ * the middle that has no window anywhere in it, so it falls to the floor and not onto a window top where
+ * no sheep can reach it (it used to come to rest on the demo's windows for half a minute at a time).
+ * If windows cover every column it falls back to the middle.
+ */
+export const dropSpot = (
+  areas: readonly Rect[],
+  windows: readonly Rect[],
+  size: number,
+): { x: number; y: number } => {
+  const a = areas[0] ?? { x: 0, y: 0, width: 800, height: 600 };
+  const middle = Math.round(a.x + a.width / 2 - size / 2);
+  const clear = (x: number): boolean =>
+    !windows.some(
+      (w) => x < w.x + w.width && x + size > w.x && w.y < a.y + a.height && w.y + w.height > a.y,
+    );
+  const step = Math.max(1, size * 2);
+  for (let k = 0; k * step <= a.width / 2; k++)
+    for (const side of k === 0 ? [0] : [1, -1]) {
+      const x = middle + side * k * step;
+      if (x >= a.x && x + size <= a.x + a.width && clear(x)) return { x, y: a.y + 20 };
+    }
+  return { x: middle, y: a.y + 20 };
+};

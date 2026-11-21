@@ -1,3 +1,5 @@
+import { dropSpot } from './ball.js';
+
 /**
  * Soccer: two teams, a goal at each end of the screen, a score, and a kick-off after every goal.
  * Pure and id-based (like tag), so the demo (one process) and the Electron main process (one window per
@@ -74,11 +76,15 @@ export const goalsFor = (areas: readonly Rect[], size: number): Goals | null => 
   };
 };
 
-/** Where the ball is put for a kick-off: the middle of the primary area, dropped from near the top. */
-export const kickoffSpot = (areas: readonly Rect[], size: number): { x: number; y: number } => {
-  const a = areas[0] ?? { x: 0, y: 0, width: 800, height: 600 };
-  return { x: Math.round(a.x + a.width / 2 - size / 2), y: a.y + 20 };
-};
+/**
+ * Where the ball is put for a kick-off: dropped from near the top, in the clear column closest to the
+ * middle (so it falls to the floor, not onto a window top where nobody can reach it).
+ */
+export const kickoffSpot = (
+  areas: readonly Rect[],
+  size: number,
+  windows: readonly Rect[] = [],
+): { x: number; y: number } => dropSpot(areas, windows, size);
 
 const hit = (a: Rect, b: Rect): boolean =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;

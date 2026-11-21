@@ -1,4 +1,12 @@
-import { ballRect, kickBall, stepBall, type Ball } from '../core/ball.js';
+import {
+  REST_RESET_MS,
+  ballRect,
+  dropSpot,
+  kickBall,
+  restTime,
+  stepBall,
+  type Ball,
+} from '../core/ball.js';
 import { clampIntoAreas, obstaclesFrom } from '../core/geometry.js';
 import {
   attackDir,
@@ -153,6 +161,8 @@ let ball: Ball | null = null;
 let ballEl: HTMLElement | null = null;
 let ballDrag: Drag | null = null;
 let kicks = 0;
+let restMs = 0; // how long the ball has been lying still
+let ballResets = 0;
 const ballSize = (): number => Math.round(BALL_BASE * scale);
 const currentBall = (): Rect | null => (ball ? ballRect(ball, ballSize()) : null);
 
@@ -166,8 +176,11 @@ const drawBall = (): void => {
 
 const startKickAbout = (): void => {
   if (ball) return;
-  const area = world().areas[0];
-  ball = { x: area.x + area.width / 2, y: area.y + 20, vx: 140, vy: 0 };
+  const w = world();
+  const spot = dropSpot(w.areas, w.windows, ballSize());
+  ball = { x: spot.x, y: spot.y, vx: 140, vy: 0 };
+  restMs = 0;
+  ballResets = 0;
   ballEl = document.createElement('div');
   ballEl.className = 'ball';
   ballEl.id = 'ball';
@@ -200,11 +213,22 @@ const stopKickAbout = (): void => {
 
 const stepBallFrame = (dt: number): void => {
   if (!ball || paused || ballDrag) return;
-  ball = stepBall(ball, world(), ballSize(), (Math.min(dt, 50) * prefs.speed) / 1000);
+  const w = world();
+  ball = stepBall(ball, w, ballSize(), (Math.min(dt, 50) * prefs.speed) / 1000);
+  restMs = restTime(restMs, ball, dt);
+  if (restMs >= REST_RESET_MS) {
+    // Lying still this long means nobody can get at it (on a window top, say): drop it in again over
+    // open floor.
+    const spot = dropSpot(w.areas, w.windows, ballSize());
+    ball = { x: spot.x, y: spot.y, vx: 0, vy: 0 };
+    restMs = 0;
+    ballResets += 1;
+  }
 };
 
 // ---- soccer: two teams, a goal at each end, first to WIN_SCORE -------------------------------------
 let match: Match | null = null;
+let matchOwnsBall = false;
 let matchEndAt: number | null = null;
 let goalEls: { left: HTMLElement; right: HTMLElement } | null = null;
 let scoreEl: HTMLElement | null = null;
@@ -253,8 +277,10 @@ const drawMatch = (): void => {
 };
 
 const kickoff = (): void => {
-  const spot = kickoffSpot(world().areas, ballSize());
+  const w = world();
+  const spot = kickoffSpot(w.areas, ballSize(), w.windows);
   if (ball) ball = { x: spot.x, y: spot.y, vx: 0, vy: 0 };
+  restMs = 0;
 };
 
 const stepMatchFrame = (): void => {
@@ -277,6 +303,7 @@ const startMatchGame = (): void => {
   stopTagGame();
   while (flock.length < 4 && flock.length < MAX_SHEEP) addSheep(); // two a side
   wanted = flock.length;
+  matchOwnsBall = ball === null; // a ball you already had out stays yours when the match ends
   startKickAbout();
   match = startMatch(clock);
   matchEndAt = null;
@@ -298,6 +325,8 @@ const startMatchGame = (): void => {
 };
 
 function stopMatch(): void {
+  if (matchOwnsBall) stopKickAbout(); // the ball the match brought in goes with it
+  matchOwnsBall = false;
   match = null;
   matchEndAt = null;
   goalEls?.left.remove();
@@ -604,6 +633,8 @@ Object.assign(window, {
     ball: (): Ball | null => (ball ? { ...ball } : null),
     kickAbout: (on: boolean): void => (on ? startKickAbout() : stopKickAbout()),
     kicks: (): number => kicks,
+    /** How many times a ball that had lain still too long was dropped in again. */
+    ballResets: (): number => ballResets,
     /** Tag state: which sheep (0-based flock index) is it, and how many tags so far. */
     tag: (): { it: number; tags: number } | null =>
       tagGame ? { it: flock.findIndex((s) => s.id === tagGame?.it), tags: tagCount } : null,
@@ -628,9 +659,10 @@ Object.assign(window, {
           }
         : null,
     matchPlay: (on: boolean): void => (on ? startMatchGame() : stopMatch()),
-    /** Put the ball somewhere (to stage a goal in a test). */
+    /** Put the ball somewhere and leave it there (to stage a goal, or a stuck ball, in a test). */
     placeBall: (x: number, y: number): void => {
       if (ball) ball = { x, y, vx: 0, vy: 0 };
+      restMs = 0;
     },
     ready: (): boolean => flock.length > 0,
   },

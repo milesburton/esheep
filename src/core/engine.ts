@@ -70,6 +70,10 @@ export interface SheepState {
   readonly entered: boolean;
   /** Milliseconds until this sheep may kick the ball again. */
   readonly kickCd: number;
+  /** How long (ms) it has been trying to walk without getting anywhere (the stuck watchdog). */
+  readonly stuckMs: number;
+  /** After being unstuck, steering (chasing the ball, tag) is switched off for this long (ms). */
+  readonly calm: number;
   /** Set while the sheep is hopping from the floor up onto a window. */
   readonly hop: Hop | null;
   // current animation playback
@@ -156,6 +160,8 @@ const placeholder = (anim: PackAnim, x: number, y: number, rng: number): SheepSt
   entered: false,
   hop: null,
   kickCd: 0,
+  stuckMs: 0,
+  calm: 0,
   anim,
   frames: anim.frames,
   repeatFrom: 0,
@@ -390,17 +396,46 @@ const chaseBall = (
   s: SheepState,
   ball: Rect,
   cfg: Config,
+  /** In a match a sheep always knows where the ball is, however far off. */
+  anywhere = false,
 ): { dir: number; kickable: boolean } | null => {
   const S = cfg.size;
   const feet = s.y + S;
   if (Math.abs(ball.y + ball.height - feet) > S * 1.2) return null; // on another level
   const dx = ball.x + ball.width / 2 - (s.x + S / 2);
-  if (Math.abs(dx) > S * CHASE_RANGE) return null;
+  if (!anywhere && Math.abs(dx) > S * CHASE_RANGE) return null;
   const dir = dx >= 0 ? 1 : -1;
   const gap = dir > 0 ? ball.x - (s.x + S) : s.x - (ball.x + ball.width);
   const kickable =
     gap <= S * 0.25 && gap >= -S * 0.5 && ball.y + ball.height > s.y + S * 0.35 && ball.y < feet;
   return { dir, kickable };
+};
+
+/** How long (ms) a sheep may try to walk without moving before the watchdog steps in. */
+const STUCK_MS = 1500;
+/** How long (ms) steering stays off after being unstuck, so it does not turn straight back in. */
+const UNSTICK_CALM_MS = 2500;
+
+/** The nearest spot along the sheep's own floor where it is clear of other sheep and window walls. */
+const nearestFreeX = (s: SheepState, world: World, cfg: Config): number | null => {
+  const S = cfg.size;
+  const feet = s.y + S;
+  const supported = (x: number): boolean =>
+    world.areas.some((a) => Math.abs(feet - (a.y + a.height)) <= TOL && overlapsX(S, x, a)) ||
+    [...world.windows, ...backs(world, cfg)].some(
+      (w) => Math.abs(feet - w.y) <= TOL && overlapsX(S, x, w),
+    );
+  const free = (x: number): boolean =>
+    onScreenLower(world.areas, S, x, s.y) &&
+    supported(x) &&
+    !(world.others ?? []).some((o) => overlapsSheep(x, s.y, S, o)) &&
+    !world.windows.some((w) => intersects(x, s.y, S, w) && feet > w.y + TOL * 2);
+  for (let k = 1; k <= 40; k++)
+    for (const side of [1, -1]) {
+      const x = s.x + side * k * (S / 2);
+      if (free(x)) return x;
+    }
+  return null;
 };
 
 /** A window ledge just ahead (above head height) that a walking sheep could hop up onto. */
@@ -751,7 +786,12 @@ export const update = (
 
   let s: SheepState = separate(
     rescue(
-      { ...state, acc: state.acc + dtMs, kickCd: Math.max(0, state.kickCd - dtMs) },
+      {
+        ...state,
+        acc: state.acc + dtMs,
+        kickCd: Math.max(0, state.kickCd - dtMs),
+        calm: Math.max(0, state.calm - dtMs),
+      },
       world,
       cfg,
     ),
@@ -791,6 +831,31 @@ export const update = (
         );
     s = moved.state;
 
+    // Stuck watchdog. A sheep that is meant to be walking but gets nowhere (pinned against a sheep, a
+    // window wall, the screen edge, a ball it cannot reach) used to keep "walking" in place for as long
+    // as whatever it was steering for stayed put. After STUCK_MS it turns round and walks away, with
+    // steering switched off for a moment; if it is wedged again straight after, it is slid to the
+    // nearest free spot on its floor.
+    const wantsToMove =
+      !before.hop &&
+      LOCOMOTION.has(before.anim.name) &&
+      Math.abs(lerp(before.p0.x, before.p1.x, t)) > 0;
+    const progressed = Math.abs(s.x - before.x) >= 0.5 || Math.abs(s.y - before.y) >= 0.5;
+    s = { ...s, stuckMs: wantsToMove && !progressed ? s.stuckMs + interval : 0 };
+    if (s.stuckMs >= STUCK_MS) {
+      const wedged = s.calm > 0; // stuck again straight after being turned round
+      const freed = wedged ? nearestFreeX(s, world, cfg) : null;
+      s = {
+        ...s,
+        stuckMs: 0,
+        calm: UNSTICK_CALM_MS,
+        x: freed ?? s.x,
+        flipped: freed === null ? !s.flipped : s.flipped,
+      };
+      restart(cp.byName.get('walk')?.id ?? 1, 1);
+      continue;
+    }
+
     // Stepping off the end of a window counts as reaching its edge: turn back, look down, hop off.
     if (!before.hop && !moved.hit && flagsOf(before, world, cfg).window && s.y === before.y) {
       const after = flagsOf(s, world, cfg);
@@ -829,7 +894,11 @@ export const update = (
     // Tag: "it" runs at the nearest sheep, runners run away from "it" (and leap over it if cornered).
     const tag = world.tag;
     const playing =
-      !!tag && !s.hop && (flags.taskbar || flags.window) && LOCOMOTION.has(s.anim.name);
+      !!tag &&
+      s.calm <= 0 &&
+      !s.hop &&
+      (flags.taskbar || flags.window) &&
+      LOCOMOTION.has(s.anim.name);
     if (playing && tag?.target && !(tag.role === 'it' && tag.wait)) {
       const S = cfg.size;
       const toward = tag.target.x + tag.target.width / 2 >= s.x + S / 2 ? 1 : -1;
@@ -863,12 +932,13 @@ export const update = (
     }
     if (
       world.ball &&
+      s.calm <= 0 &&
       !tag?.target &&
       !s.hop &&
       (flags.taskbar || flags.window) &&
       LOCOMOTION.has(s.anim.name)
     ) {
-      const chase = chaseBall(s, world.ball, cfg);
+      const chase = chaseBall(s, world.ball, cfg, !!world.team);
       // In a match a sheep only kicks towards the goal it attacks; from the wrong side it runs on past
       // the ball, then turns and gets behind it.
       const onside = !world.team || chase?.dir === world.team.dir;

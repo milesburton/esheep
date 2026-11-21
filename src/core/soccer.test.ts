@@ -74,6 +74,11 @@ describe('goals', () => {
   });
   it('put the kick-off spot in the middle of the primary display', () => {
     expect(kickoffSpot([AREA], SIZE)).toEqual({ x: 493, y: 20 });
+    // With a window under the middle the ball is dropped beside it, so it lands on the floor and not on a
+    // window top where no sheep can get at it (the cause of a ball sitting still for half a minute).
+    const win = { x: 400, y: 300, width: 200, height: 300 };
+    const spot = kickoffSpot([AREA], SIZE, [win]);
+    expect(spot.x + SIZE <= 400 || spot.x >= 600).toBe(true);
   });
 });
 

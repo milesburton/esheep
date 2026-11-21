@@ -51,6 +51,14 @@ const EXTRA: ReadonlyArray<readonly [string, ListName, NextRef]> = [
 /** Spawn index -> weight: the bath and the black sheep walk-on turn up more often. */
 const SPAWN_WEIGHTS: Readonly<Record<number, number>> = { 2: 8, 3: 6 };
 
+/**
+ * The classic pack starts some sheep beyond the right edge (`screenW+10`, `screenW`) and walks them in.
+ * A sheep that starts off every display looks like one that has walked off the screen, so they start just
+ * inside it instead.
+ */
+const onScreen = (x: string): string =>
+  /^screenW(\s*\+\s*\d+)?$/.test(x.trim()) ? 'screenW-imageW-10' : x;
+
 const numeric = /^-?\d+(\.\d+)?$/;
 const scaled = (v: string, k: number): string => (numeric.test(v) ? String(Number(v) * k) : v);
 
@@ -98,6 +106,10 @@ export const tunePack = (pack: ClassicPack): ClassicPack => {
   return {
     ...pack,
     animations,
-    spawns: pack.spawns.map((s, i) => ({ ...s, p: SPAWN_WEIGHTS[i] ?? s.p })),
+    spawns: pack.spawns.map((s, i) => ({
+      ...s,
+      p: SPAWN_WEIGHTS[i] ?? s.p,
+      x: onScreen(s.x),
+    })),
   };
 };

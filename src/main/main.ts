@@ -5,6 +5,7 @@ import * as path from 'path';
 import { WINDOW_PAD, obstaclesFrom } from '../core/geometry';
 import { autoLaunchAvailable, isAutoLaunchEnabled, setAutoLaunch } from './autolaunch';
 import { createKickAbout } from './kickabout';
+import { clampWindow } from './placement';
 import { migratePrefs } from './prefs';
 import { createSoccerPlay, MATCH_LIMIT_MS } from './soccerplay';
 import { createTagPlay } from './tagplay';
@@ -60,6 +61,8 @@ if (migrated) console.log(`prefs: moved from the bouncing sheep to the "${migrat
 const sheepWins: BrowserWindow[] = [];
 /** Each sheep window's intended side in px, keyed by webContents id (see `move-window`). */
 const sheepSizes = new Map<number, number>();
+/** The transparent margin around each sheep's sprite (0 for the bouncing sheep), keyed the same way. */
+const sheepPads = new Map<number, number>();
 let settingsWin: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let paused = false;
@@ -96,10 +99,12 @@ const createSheepWindow = (): void => {
   void win.loadFile(page('index.html'));
   const id = win.webContents.id;
   sheepSizes.set(id, SIZE);
+  sheepPads.set(id, WINDOW_PAD);
   win.on('closed', () => {
     const i = sheepWins.indexOf(win);
     if (i >= 0) sheepWins.splice(i, 1);
     sheepSizes.delete(id);
+    sheepPads.delete(id);
   });
   sheepWins.push(win);
 };
@@ -283,6 +288,7 @@ const soccer = createSoccerPlay({
   sheepIds: () => tagSprites().map((s) => s.id),
   size: ballSize,
   areas: workAreas,
+  windows: () => obstaclesFrom(windowList(), workAreas()),
   now: () => Date.now(),
   ball: kickAbout,
 });
@@ -488,14 +494,24 @@ ipcMain.on('set-click-through', (e, ignore: boolean) => {
 ipcMain.on('move-window', (e, x: number, y: number) => {
   const win = BrowserWindow.fromWebContents(e.sender);
   if (!win || !Number.isFinite(x) || !Number.isFinite(y)) return;
-  const n = sheepSizes.get(win.webContents.id) ?? SIZE;
-  win.setBounds({ x: Math.round(x), y: Math.round(y), width: n, height: n });
+  const id = win.webContents.id;
+  const n = sheepSizes.get(id) ?? SIZE;
+  // Last line of defence: whatever the sheep asked for, never put it with its body off every display.
+  const at = clampWindow(
+    workAreas(),
+    Math.round(x),
+    Math.round(y),
+    n,
+    sheepPads.get(id) ?? WINDOW_PAD,
+  );
+  win.setBounds({ x: at.x, y: at.y, width: n, height: n });
 });
-ipcMain.on('set-window-size', (e, size: number) => {
+ipcMain.on('set-window-size', (e, size: number, pad?: number) => {
   const win = BrowserWindow.fromWebContents(e.sender);
   const n = Math.round(clamp(Number(size) || SIZE, 16, 512));
   if (!win) return;
   sheepSizes.set(win.webContents.id, n);
+  sheepPads.set(win.webContents.id, clamp(Math.round(Number(pad)) || 0, 0, n / 2 - 1));
   const b = win.getBounds();
   if (b.width === n && b.height === n) return;
   // Linux ignores resizing a non-resizable window, so lift the restriction around the call.
@@ -589,6 +605,8 @@ if (process.env.ESHEEP_TEST === '1') {
         active: kickAbout.active(),
         held: kickAbout.held(),
         kicks: kickAbout.kicks(),
+        resets: kickAbout.resets(),
+        autoReleases: kickAbout.autoReleases(),
         ball: kickAbout.state(),
         windows: BrowserWindow.getAllWindows().filter((w) =>
           w.webContents.getURL().endsWith('/app/ball.html'),

@@ -81,7 +81,7 @@ const run = async (): Promise<void> => {
   const side = created.windowSize();
   canvas.style.width = `${side}px`;
   canvas.style.height = `${side}px`;
-  api.setWindowSize(side);
+  api.setWindowSize(side, created.padding());
   created.setPaused(live.paused);
   live.stage = created;
 
@@ -156,7 +156,7 @@ const run = async (): Promise<void> => {
     if (now - lastCheck > 500) {
       lastCheck = now;
       if (Math.abs(window.innerWidth - side) > 2 || Math.abs(window.innerHeight - side) > 2)
-        api.setWindowSize(side);
+        api.setWindowSize(side, created.padding());
     }
     created.setPixelRatio(window.devicePixelRatio); // follows the window between mixed-DPI displays
     created.tick(Math.min(now - last, 100));

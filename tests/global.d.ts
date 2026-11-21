@@ -17,11 +17,12 @@ interface Window {
     ball(): { x: number; y: number; vx: number; vy: number } | null;
     kickAbout(on: boolean): void;
     kicks(): number;
+    ballResets(): number;
+    placeBall(x: number, y: number): void;
     tag(): { it: number; tags: number } | null;
     tagPlay(on: boolean): void;
     match(): { red: number; blue: number; winner: string | null; teams: (string | null)[] } | null;
     matchPlay(on: boolean): void;
-    placeBall(x: number, y: number): void;
     ready(): boolean;
   };
 }

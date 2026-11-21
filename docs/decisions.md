@@ -390,3 +390,38 @@ there the tray pops up a freshly built menu for both buttons; other platforms re
 something changes. Right-clicking a sheep opens the same menu with **Remove this sheep** on top (only the
 primary button grabs a sheep now). The packaged-app self-test also reports the tray icon (size, scale
 factors) and menu size, and the Windows CI job fails unless they are right.
+
+## 29. Stuck sheep, a stuck ball, and sheep off the screen
+
+Three reports, all measured before fixing (a headless run of the demo, five to eight sheep, windows
+visible, four simulated minutes per seed):
+
+**Sheep that walk but do not move.** Free play, kick-about and soccer showed none, but _tag_ showed up to
+8.3 s of it. A runner fleeing "it" (asleep) ran into a sheep that was eating against the screen edge; the
+overlap block (ADR 24) stopped it entering, but nothing made it turn, so it stayed in a `run` animation
+going nowhere until "it" woke. The same shape would pin a sheep chasing an unreachable ball, or one
+walking into an invisible "window" on a real desktop (Windows reports cloaked UWP windows as visible).
+Rather than another special case there is now a **stuck watchdog** in the engine: a sheep in a locomotion
+animation that makes no progress for 1.5 s turns round and walks away, with steering (ball chase, tag)
+switched off for 2.5 s so it does not turn straight back in; if it is wedged again within that time it is
+slid to the nearest free spot on its own floor (`nearestFreeX`). Result: stuck time in tag went from up
+to 8.3 s to zero, with overlap and tag throughput unchanged.
+
+**The soccer ball stuck on the screen.** Reproduced: with windows visible the ball sat motionless for 25-31
+s, always on top of a window (a perch nobody can reach), and in the demo `Stop soccer` left the ball behind
+altogether (`stopMatch` never removed the ball it had started). Fixes: kick-offs and re-drops use
+`dropSpot`, the clear column nearest the middle with no window in it, so the ball falls to the floor; a
+ball that lies still for 6 s (`REST_RESET_MS`) is dropped in again, in both the app's controller and the
+demo; during a match sheep know where the ball is however far away (the 14-sprite notice range only applies
+outside a match); a held ball nobody has moved for 8 s is let go (a lost mouse-up used to freeze it, and the
+sheep cannot kick a held ball); the ball window only reacts to the primary button and lets go on a lost
+pointer capture or on blur; and the demo removes a ball the match brought, but keeps one you already had.
+Result: the ball is never perched off the floor, and matches finish roughly twice as fast.
+
+**Sheep walking off the screen.** Not reproducible in the demo (0% of frames outside the monitor in free
+play, tag, kick-about and soccer), so this is defence in depth rather than a located cause. Spawns that
+started beyond the right edge (`screenW+10`, the classic walk-in) now start just inside it; and the main
+process, which places the windows, never puts a sheep with its body off every display
+(`clampWindow`, using each window's margin), whatever the renderer asks for, tested by asking for positions
+at +/-99999 in every direction. Ceilings and heads poking above a display are still allowed. If it still
+happens the next step is to learn which edge, and whether it is a multi-monitor or high-DPI setup.

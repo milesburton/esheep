@@ -24,6 +24,8 @@ export interface SoccerPlayDeps {
   size: () => number;
   /** Display work areas, primary first. */
   areas: () => readonly Rect[];
+  /** The windows the ball can land on: kick-offs avoid dropping it onto one. */
+  windows?: () => readonly Rect[];
   now: () => number;
   /** The shared ball (the same one kick-about uses). */
   ball: {
@@ -63,7 +65,7 @@ export const createSoccerPlay = (deps: SoccerPlayDeps): SoccerPlay => {
   let endAt: number | null = null;
 
   const kickoff = (): void => {
-    const spot = kickoffSpot(deps.areas(), deps.size());
+    const spot = kickoffSpot(deps.areas(), deps.size(), deps.windows?.() ?? []);
     deps.ball.place(spot.x, spot.y);
   };
 

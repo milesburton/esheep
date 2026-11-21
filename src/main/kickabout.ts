@@ -1,8 +1,10 @@
-import { kickBall, stepBall, type Ball } from '../core/ball';
+import { REST_RESET_MS, dropSpot, kickBall, restTime, stepBall, type Ball } from '../core/ball';
 import { clampIntoAreas } from '../core/geometry';
 
 /** How long a kick-about lasts before the ball quietly goes away (it is opt-in, never permanent). */
 export const KICK_ABOUT_MS = 120_000;
+/** A held ball nobody has moved for this long is dropped (a lost mouse-up must not freeze it for good). */
+export const HELD_TIMEOUT_MS = 8000;
 /** Cap on one simulation step, so a stalled timer can't teleport the ball. */
 const MAX_STEP_MS = 50;
 
@@ -41,6 +43,9 @@ export interface KickAbout {
   kicks(): number;
   /** Put the ball somewhere (tests, and "reset"). */
   place(x: number, y: number): void;
+  /** How many times a ball that had come to rest was put back in play, and held balls dropped. */
+  resets(): number;
+  autoReleases(): number;
 }
 
 const finite = (n: number): number => (Number.isFinite(n) ? n : 0);
@@ -51,21 +56,36 @@ export const createKickAbout = (deps: KickAboutDeps): KickAbout => {
   let elapsed = 0;
   let limit = KICK_ABOUT_MS;
   let kicks = 0;
+  let restMs = 0; // how long it has been lying still
+  let heldMs = 0; // how long it has been held without being moved
+  let resets = 0;
+  let autoReleases = 0;
 
   const stop = (): void => {
     ball = null;
     held = false;
   };
 
+  /** Drop the ball in again, over a clear stretch of floor. */
+  const redrop = (): void => {
+    const spot = dropSpot(deps.areas(), deps.world().windows, deps.size());
+    ball = { x: spot.x, y: spot.y, vx: 0, vy: 0 };
+    restMs = 0;
+  };
+
   return {
     start: (limitMs = KICK_ABOUT_MS) => {
       if (ball) return;
       limit = limitMs;
-      const area = deps.areas()[0] ?? { x: 0, y: 0, width: 800, height: 600 };
-      ball = { x: area.x + area.width / 2, y: area.y + 20, vx: 140, vy: 0 };
+      const spot = dropSpot(deps.areas(), deps.world().windows, deps.size());
+      ball = { x: spot.x, y: spot.y, vx: 140, vy: 0 };
       held = false;
       elapsed = 0;
       kicks = 0;
+      restMs = 0;
+      heldMs = 0;
+      resets = 0;
+      autoReleases = 0;
     },
     stop,
     active: () => ball !== null,
@@ -80,6 +100,19 @@ export const createKickAbout = (deps: KickAboutDeps): KickAbout => {
       }
       if (!held) {
         ball = stepBall(ball, deps.world(), deps.size(), (dt * (deps.speed?.() ?? 1)) / 1000);
+        restMs = restTime(restMs, ball, dt);
+        if (restMs >= REST_RESET_MS) {
+          // Lying still this long means nobody can get at it (a window top, the far side of the screen).
+          redrop();
+          resets += 1;
+        }
+      } else {
+        heldMs += dt;
+        if (heldMs >= HELD_TIMEOUT_MS) {
+          held = false; // the mouse-up was lost: let go
+          heldMs = 0;
+          autoReleases += 1;
+        }
       }
       return true;
     },
@@ -90,10 +123,14 @@ export const createKickAbout = (deps: KickAboutDeps): KickAbout => {
       }
     },
     grab: () => {
-      if (ball) held = true;
+      if (ball) {
+        held = true;
+        heldMs = 0;
+      }
     },
     move: (x, y) => {
       if (!ball || !held) return;
+      heldMs = 0;
       const at = clampIntoAreas(deps.world().areas, deps.size(), finite(x), finite(y));
       ball = { ...ball, ...at, vx: 0, vy: 0 };
     },
@@ -105,7 +142,12 @@ export const createKickAbout = (deps: KickAboutDeps): KickAbout => {
     held: () => held,
     kicks: () => kicks,
     place: (x, y) => {
-      if (ball) ball = { x, y, vx: 0, vy: 0 };
+      if (ball) {
+        ball = { x, y, vx: 0, vy: 0 };
+        restMs = 0;
+      }
     },
+    resets: () => resets,
+    autoReleases: () => autoReleases,
   };
 };

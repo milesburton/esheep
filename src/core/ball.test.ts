@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { ROLL_STOP, ballRect, kickBall, onFloor, stepBall, type Ball } from './ball.js';
+import {
+  REST_RESET_MS,
+  ROLL_STOP,
+  ballRect,
+  dropSpot,
+  kickBall,
+  onFloor,
+  restTime,
+  stepBall,
+  type Ball,
+} from './ball.js';
 import { world } from '../test/fixtures.js';
 
 const SIZE = 14;
@@ -80,5 +90,51 @@ describe('ball', () => {
       width: SIZE,
       height: SIZE,
     });
+  });
+});
+
+describe('restTime', () => {
+  it('counts up while the ball is still and resets the moment it moves', () => {
+    const still: Ball = { x: 0, y: 0, vx: 0, vy: 0 };
+    expect(restTime(0, still, 16)).toBe(16);
+    expect(restTime(1000, still, 16)).toBe(1016);
+    expect(restTime(1000, { ...still, vx: ROLL_STOP }, 16)).toBe(1016); // right at the threshold: still resting
+    expect(restTime(1000, { ...still, vx: ROLL_STOP + 1 }, 16)).toBe(0);
+    expect(restTime(1000, { ...still, vy: -50 }, 16)).toBe(0);
+    expect(restTime(5, still, -10)).toBe(5); // a bad step never rewinds it
+    expect(REST_RESET_MS).toBeGreaterThan(3000);
+  });
+});
+
+describe('dropSpot', () => {
+  const area = { x: 0, y: 0, width: 1000, height: 600 };
+
+  it('is the middle, near the top, when nothing is in the way', () => {
+    expect(dropSpot([area], [], 14)).toEqual({ x: 493, y: 20 });
+  });
+
+  it('moves to the nearest column with no window in it', () => {
+    const win = { x: 400, y: 300, width: 200, height: 300 };
+    const spot = dropSpot([area], [win], 14);
+    expect(spot.y).toBe(20);
+    expect(spot.x + 14 <= 400 || spot.x >= 600).toBe(true);
+    expect(Math.abs(spot.x - 493)).toBeLessThan(150); // and not far from the middle
+  });
+
+  it('works both sides: whichever side of the middle is clear', () => {
+    const left = { x: 0, y: 100, width: 520, height: 400 };
+    expect(dropSpot([area], [left], 14).x).toBeGreaterThanOrEqual(520);
+    const right = { x: 480, y: 100, width: 520, height: 400 };
+    expect(dropSpot([area], [right], 14).x + 14).toBeLessThanOrEqual(480);
+  });
+
+  it('ignores windows that are not on the display, and falls back to the middle if the screen is full', () => {
+    expect(dropSpot([area], [{ x: 400, y: 900, width: 300, height: 300 }], 14).x).toBe(493);
+    const wall = { x: 0, y: 0, width: 1000, height: 600 };
+    expect(dropSpot([area], [wall], 14)).toEqual({ x: 493, y: 20 });
+  });
+
+  it('copes with no display at all', () => {
+    expect(dropSpot([], [], 14)).toEqual({ x: 393, y: 20 });
   });
 });

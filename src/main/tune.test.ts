@@ -105,6 +105,24 @@ describe('tunePack', () => {
     expect(tunePack(base()).animations.some((a) => a.name === 'kick')).toBe(false);
   });
 
+  it('starts sheep on screen: no spawn begins beyond the right edge any more', () => {
+    const input = base();
+    input.spawns = [
+      { p: 20, x: 'screenW+10', y: 'areaH-imageH', next: 1 },
+      { p: 80, x: 'random*(screenW-imageW-50)/100+25', y: '-imageH-20', next: 1 },
+      { p: 3, x: 'screenW', y: 'areaH-imageH', next: 28 },
+      { p: 3, x: ' screenW + 40 ', y: 'areaH/2', next: 21 },
+    ];
+    const xs = tunePack(input).spawns.map((s) => s.x);
+    expect(xs).toEqual([
+      'screenW-imageW-10',
+      'random*(screenW-imageW-50)/100+25', // already on screen: untouched
+      'screenW-imageW-10',
+      'screenW-imageW-10',
+    ]);
+    expect(tunePack(input).spawns.map((s) => s.y)).toEqual(input.spawns.map((s) => s.y)); // y untouched
+  });
+
   it('copes with packs that lack the classic animations', () => {
     const bare: ClassicPack = { ...base(), animations: [anim({ id: 9, name: 'x' })], spawns: [] };
     expect(() => tunePack(bare)).not.toThrow();

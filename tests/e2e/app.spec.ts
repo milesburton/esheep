@@ -397,6 +397,8 @@ test.describe('kick-about', () => {
     active: boolean;
     held: boolean;
     kicks: number;
+    resets: number;
+    autoReleases: number;
     windows: number;
     ball: { x: number; y: number; size: number; vx: number; vy: number } | null;
   };
@@ -500,6 +502,34 @@ test.describe('kick-about', () => {
     await expect.poll(async () => (await info()).held).toBe(false);
     // Released: it is back under physics and settles on the floor again.
     await expect.poll(async () => (await info()).ball?.y, { timeout: 20_000 }).toBe(bottom - 14);
+  });
+
+  test('a ball nobody can reach is dropped in again (the bouncing sheep ignores it, so it just sits)', async () => {
+    await sheepPage();
+    await seam((s) => s.startKickAbout());
+    await ballPage();
+    expect((await info()).resets).toBe(0);
+    // It lands, lies still for 6 seconds, and is put back in play from the top.
+    await expect
+      .poll(async () => (await info()).resets, { timeout: 30_000, intervals: [500] })
+      .toBeGreaterThanOrEqual(1);
+  });
+
+  test('a ball that is picked up and never put down is let go after a few seconds', async () => {
+    test.setTimeout(60_000);
+    await sheepPage();
+    await seam((s) => s.startKickAbout());
+    const page = await ballPage();
+    const bottom = await floor();
+    await expect.poll(async () => (await info()).ball?.y, { timeout: 20_000 }).toBe(bottom - 14);
+    await page.mouse.move(7, 7);
+    await page.mouse.down(); // ...and the mouse-up never comes
+    await expect.poll(async () => (await info()).held).toBe(true);
+    await expect
+      .poll(async () => (await info()).held, { timeout: 20_000, intervals: [500] })
+      .toBe(false);
+    expect((await info()).autoReleases).toBe(1);
+    await page.mouse.up();
   });
 
   test('changing the sprite size or pack ends the kick-about (the ball is sized to the sprite)', async () => {
@@ -940,6 +970,40 @@ test.describe('the sheep window keeps its size (it must never smear across the s
     });
     expect(sizes.sizes).toEqual(['52x52']);
     expect(sizes.positions).toBeGreaterThan(1); // it did move, so this was a real test
+  });
+});
+
+test.describe('a sheep can never be put off the screen', () => {
+  test('whatever the renderer asks for, the window stays on a display', async () => {
+    const page = await sheepPage();
+    await expect.poll(async () => (await sheepBounds()).width).toBe(128);
+    // Pause so the sheep's own frame loop does not move the window while we poke at it.
+    await app.evaluate(() =>
+      (globalThis as unknown as { __esheep: { togglePause(): void } }).__esheep.togglePause(),
+    );
+    await new Promise((r) => setTimeout(r, 300));
+    const area = await app.evaluate(({ screen }) => screen.getPrimaryDisplay().workArea);
+    for (const [x, y] of [
+      [99999, 400],
+      [-99999, 400],
+      [400, 99999],
+      [400, -99999],
+      [99999, 99999],
+      [-99999, -99999],
+    ]) {
+      await page.evaluate(([px, py]) => window.electronAPI.moveWindow(px, py), [x, y]);
+      await new Promise((r) => setTimeout(r, 120));
+      const b = await sheepBounds();
+      expect(b.x, `asked for ${x},${y}`).toBeGreaterThanOrEqual(area.x);
+      expect(b.y, `asked for ${x},${y}`).toBeGreaterThanOrEqual(area.y);
+      expect(b.x + b.width, `asked for ${x},${y}`).toBeLessThanOrEqual(area.x + area.width);
+      expect(b.y + b.height, `asked for ${x},${y}`).toBeLessThanOrEqual(area.y + area.height);
+      expect({ w: b.width, h: b.height }).toEqual({ w: 128, h: 128 }); // and its size is untouched
+    }
+    // A position that is fine is honoured exactly.
+    await page.evaluate(() => window.electronAPI.moveWindow(300, 200));
+    await expect.poll(async () => (await sheepBounds()).x).toBe(300);
+    expect((await sheepBounds()).y).toBe(200);
   });
 });
 

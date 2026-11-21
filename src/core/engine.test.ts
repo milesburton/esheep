@@ -1013,6 +1013,144 @@ describe('sheep are solid to each other (no overlapping)', () => {
   });
 });
 
+describe('the stuck watchdog (a sheep that walks but gets nowhere)', () => {
+  const S = CFG.size;
+  const noTurn = (): CompiledPack => {
+    // The classic `run` has no turn-round border, so a sheep pressed against something stays "running".
+    const base = miniPack();
+    return compilePack({
+      ...base,
+      animations: [
+        ...base.animations.map((a) => (a.id === 1 ? { ...a, border: [] } : a)),
+        anim({
+          id: 7,
+          name: 'run',
+          start: { x: '-10', y: '0', offsety: '0', opacity: '1', interval: '100' },
+          end: { x: '-10', y: '0', offsety: '0', opacity: '1', interval: '100' },
+          frames: [0, 1],
+          repeat: '40',
+          next: [next(1)],
+        }),
+      ],
+    });
+  };
+  const box = (x: number): Rect => ({ x, y: FLOOR_Y, width: S, height: S });
+  const at = (cp: CompiledPack, x: number, flipped: boolean): SheepState => ({
+    ...spawn(cp, world(), CFG, 3).state,
+    x,
+    y: FLOOR_Y,
+    flipped,
+    entered: true,
+  });
+  const go = (cp: CompiledPack, s0: SheepState, w: World, ms: number, rect?: () => Rect[]) => {
+    let s = s0;
+    const started: string[] = [];
+    for (let t = 0; t < ms; t += 16) {
+      const u = update(cp, rect ? { ...s } : s, rect ? { ...w, others: rect() } : w, CFG, 16);
+      s = u.state;
+      started.push(...u.started);
+    }
+    return { s, started };
+  };
+
+  it('turns a sheep that is pinned against another round, instead of walking on the spot for ever', () => {
+    const cp = noTurn();
+    const blocker = box(400);
+    const w = world({ others: [blocker] });
+    // Walking right into a stationary sheep, with no border response to turn it.
+    const start = at(cp, 400 - S - 2, true);
+    const pinned = go(cp, start, w, 1000); // after 1s it is still pinned
+    expect(Math.abs(pinned.s.x - start.x)).toBeLessThan(3);
+    const later = go(cp, start, w, 4000);
+    expect(later.s.x).toBeLessThan(start.x - 20); // it turned and walked away
+    expect(later.s.stuckMs).toBeLessThan(1500);
+  });
+
+  it('a tag runner pinned in its flee direction gives up fleeing into the obstacle and walks away', () => {
+    const cp = noTurn();
+    const blocker = box(700);
+    const w = world({
+      others: [blocker],
+      tag: { role: 'runner', target: box(100), wait: false }, // "it" is far behind, to the left
+    });
+    const start = at(cp, 700 - S - 2, true); // running right, into the blocker
+    const r = go(cp, start, w, 5000);
+    expect(r.s.x).toBeLessThan(start.x - 30);
+    expect(r.s.x + S).toBeLessThanOrEqual(blocker.x + 1); // and never overlapped it
+  });
+
+  it('a sheep wedged between two others is slid to a free spot, not left stuck', () => {
+    const cp = noTurn();
+    const left = box(300 - S - 1);
+    const right = box(300 + S + 1);
+    const w = world({ others: [left, right] });
+    const start = at(cp, 300, false);
+    const r = go(cp, start, w, 9000);
+    const overlaps = [left, right].some(
+      (o) => Math.min(r.s.x + S, o.x + S) - Math.max(r.s.x, o.x) > 3,
+    );
+    expect(overlaps).toBe(false);
+    expect(Math.abs(r.s.x - start.x)).toBeGreaterThan(S / 2); // it really did move
+  });
+
+  it('leaves a sheep that is walking freely completely alone', () => {
+    const cp = noTurn();
+    let s = at(cp, 900, false); // walking left across an empty floor
+    let turns = 0;
+    for (let t = 0; t < 4000; t += 16) {
+      const u = update(cp, s, world(), CFG, 16);
+      s = u.state;
+      expect(s.stuckMs).toBeLessThan(1500);
+      turns += u.started.filter((n) => n === 'turn').length;
+    }
+    expect(s.x).toBeLessThan(900 - 100);
+    expect(turns).toBe(0);
+  });
+
+  it('does not count sleeping or standing animations as stuck', () => {
+    const base = miniPack();
+    const cp = compilePack({
+      ...base,
+      animations: base.animations.map((a) =>
+        a.id === 1 ? { ...a, name: 'sleep', repeat: '1000' } : a,
+      ),
+    });
+    const s = go(cp, at(cp, 300, false), world(), 6000).s;
+    expect(s.stuckMs).toBe(0);
+  });
+
+  it('in a match a sheep knows where the ball is however far away; outside one it does not notice', () => {
+    const base = miniPack();
+    const cp = compilePack({
+      ...base,
+      animations: [
+        ...base.animations,
+        anim({
+          id: 7,
+          name: 'run',
+          start: { x: '-10', y: '0', offsety: '0', opacity: '1', interval: '100' },
+          end: { x: '-10', y: '0', offsety: '0', opacity: '1', interval: '100' },
+          frames: [0, 1],
+          repeat: '4',
+          next: [next(1)],
+        }),
+      ],
+    });
+    const far: Rect = { x: 100 + S * 30, y: FLOOR_Y + S - 14, width: 14, height: 14 };
+    const wide = { areas: [{ x: 0, y: 0, width: 4000, height: 600 }], windows: [] };
+    const sheep = at(cp, 100, false);
+    const noMatch = go(cp, sheep, { ...wide, ball: far }, 800).started;
+    const inMatch = go(
+      cp,
+      sheep,
+      { ...wide, ball: far, team: { team: 'red', dir: 1 } } as World,
+      800,
+    ).started;
+    expect(noMatch).not.toContain('run'); // 30 sprites away is beyond its notice
+    expect(inMatch).toContain('run');
+  });
+});
+
 describe('gravity and landing', () => {
   it('falls when there is no floor, then lands on the display bottom and resumes walking', () => {
     const cp = compiled();

@@ -640,3 +640,100 @@ test.describe('sheep never overlap', () => {
     expect((await page.evaluate(() => window.__demo.tag()))?.tags).toBeGreaterThan(0); // tag still works
   });
 });
+
+test.describe('a stuck ball and sheep that walk on the spot', () => {
+  const monitorBottom = async (page: Page): Promise<number> => (await monitor(page)).bottom;
+
+  test('a ball left on top of a window is dropped back in over open floor', async ({ page }) => {
+    await open(page);
+    await page.evaluate(() => window.__demo.step(9000)); // let the sheep land
+    await page.evaluate(() => window.__demo.kickAbout(true));
+    await page.evaluate(() => window.__demo.step(3000));
+    const win = await page
+      .locator('.win')
+      .first()
+      .evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, right: r.right, top: r.top };
+      });
+    // Park it on the window top, where nobody can get at it, and leave it.
+    await page.evaluate(([x, y]) => window.__demo.placeBall(x, y), [win.left + 30, win.top - 14]);
+    expect(await page.evaluate(() => window.__demo.ballResets())).toBe(0);
+    await page.evaluate(() => window.__demo.step(7500));
+    expect(await page.evaluate(() => window.__demo.ballResets())).toBeGreaterThanOrEqual(1);
+    await page.evaluate(() => window.__demo.step(4000));
+    const b = (await page.evaluate(() => window.__demo.ball()))!;
+    expect(b.y + 14).toBeCloseTo(await monitorBottom(page), 0); // on the floor again, not on a window top
+  });
+
+  test('stopping a match takes away the ball the match brought', async ({ page }) => {
+    await open(page);
+    expect(await page.evaluate(() => window.__demo.ball())).toBeNull();
+    await page.evaluate(() => window.__demo.matchPlay(true));
+    expect(await page.evaluate(() => window.__demo.ball())).not.toBeNull();
+    await expect(page.locator('#ball')).toHaveCount(1);
+    await page.evaluate(() => window.__demo.matchPlay(false));
+    expect(await page.evaluate(() => window.__demo.ball())).toBeNull();
+    await expect(page.locator('#ball')).toHaveCount(0); // it used to be left behind on the screen
+  });
+
+  test('a ball you already had out stays yours when a match ends', async ({ page }) => {
+    await open(page);
+    await page.evaluate(() => window.__demo.kickAbout(true));
+    await page.evaluate(() => window.__demo.matchPlay(true));
+    await page.evaluate(() => window.__demo.matchPlay(false));
+    expect(await page.evaluate(() => window.__demo.ball())).not.toBeNull();
+  });
+
+  test('in a match the ball never lies still for long, windows and all', async ({ page }) => {
+    await open(page, 'manual=1&seed=2');
+    await page.evaluate(() => window.__demo.step(9000));
+    await page.evaluate(() => window.__demo.matchPlay(true));
+    const longest = await page.evaluate(() => {
+      let cur = 0;
+      let best = 0;
+      for (let t = 0; t < 120_000; t += 16) {
+        window.__demo.step(16);
+        const b = window.__demo.ball();
+        if (!b) break;
+        cur = Math.hypot(b.vx, b.vy) < 3 ? cur + 16 : 0;
+        best = Math.max(best, cur);
+      }
+      return best / 1000;
+    });
+    // It used to sit still on a window top for 25-30 seconds. The reset is at 6s, plus time to settle.
+    expect(longest).toBeLessThan(9);
+  });
+
+  test('in a game of tag no sheep runs on the spot for more than a few seconds', async ({
+    page,
+  }) => {
+    for (const seed of [1, 3]) {
+      await page.goto(`/?manual=1&seed=${seed}`);
+      await page.waitForFunction(() => window.__demo?.ready());
+      for (let i = 0; i < 5; i++) await page.evaluate(() => window.__demo.add());
+      await page.evaluate(() => window.__demo.step(9000));
+      await page.evaluate(() => window.__demo.tagPlay(true));
+      const longest = await page.evaluate(() => {
+        const moving = new Set(['walk', 'walk_win2', 'walk_task2', 'run', 'run_begin', 'run_end']);
+        const n = window.__demo.count();
+        const still = new Array(n).fill(0);
+        const prev = window.__demo.snapshots().map((s) => s.x);
+        let best = 0;
+        for (let t = 0; t < 240_000; t += 16) {
+          window.__demo.step(16);
+          window.__demo.snapshots().forEach((s, i) => {
+            const stuck =
+              Math.abs(s.x - prev[i]) < 0.05 && moving.has(s.animation) && s.mode === 'walk';
+            still[i] = stuck ? still[i] + 16 : 0;
+            best = Math.max(best, still[i]);
+            prev[i] = s.x;
+          });
+        }
+        return best / 1000;
+      });
+      // Before the watchdog a runner pinned against a sheep ran on the spot for 6-8s.
+      expect(longest, `seed ${seed}`).toBeLessThan(4);
+    }
+  });
+});

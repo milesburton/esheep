@@ -76,6 +76,8 @@ export interface Stage {
   setPixelRatio(ratio: number): void;
   /** Side of the square window the sheep draws into (sprite plus a small margin). */
   windowSize(): number;
+  /** The transparent margin around the sprite inside that window (0 for the bounce sheep). */
+  padding(): number;
   /** Advance by `dtMs` of (unscaled) wall time, redraw and reposition. */
   tick(dtMs: number): void;
   /** True if the canvas pixel at (x, y) is part of the sheep (used for click-through). */
@@ -251,6 +253,7 @@ export const createStage = (o: StageOptions): Stage => {
 
   return {
     windowSize: () => brain.win,
+    padding: () => brain.pad,
     tick: (dtMs) => {
       if (paused) return;
       if (brain.step(dtMs, o.getWorld(), o.getPrefs(), (k) => o.onKick?.(k))) o.onSound?.();
