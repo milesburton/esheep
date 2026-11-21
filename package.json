@@ -1,6 +1,6 @@
 {
   "name": "esheep",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A modern e-Sheep desktop pet",
   "main": "dist/main/main.js",
   "author": "Miles Burton",
