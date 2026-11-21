@@ -861,6 +861,19 @@ test.describe('the sheep window keeps its size (it must never smear across the s
     app = await launch(CLASSIC);
     return sheepPage();
   };
+  /**
+   * Wait until the renderer has loaded its pack and fixed its canvas size. The window *starts* at 52px,
+   * so "the window is 52px" is true before the renderer has run at all; only the canvas's own inline
+   * size says the sheep is really up (a slow CI runner showed this).
+   */
+  const ready = (page: Page): Promise<void> =>
+    expect
+      .poll(
+        () =>
+          page.evaluate(() => (document.querySelector('canvas') as HTMLCanvasElement).style.width),
+        { timeout: 20_000 },
+      )
+      .toBe('52px');
   const bounds = async (): Promise<{ width: number; height: number }> => {
     const b = await sheepBounds();
     return { width: b.width, height: b.height };
@@ -868,6 +881,7 @@ test.describe('the sheep window keeps its size (it must never smear across the s
 
   test('a window the OS has made the wrong size is put right again', async () => {
     const page = await relaunch();
+    await ready(page);
     await expect.poll(async () => (await bounds()).width, { timeout: 15_000 }).toBe(52);
     // What a Windows display-scaling quirk looked like to the user: a window across the screen, very flat.
     await app.evaluate(({ BrowserWindow }) => {
@@ -885,6 +899,7 @@ test.describe('the sheep window keeps its size (it must never smear across the s
 
   test('the canvas is never stretched to fit the window, even while the window is wrong', async () => {
     const page = await relaunch();
+    await ready(page);
     await expect.poll(async () => (await bounds()).width, { timeout: 15_000 }).toBe(52);
     await app.evaluate(({ BrowserWindow }) => {
       const w = BrowserWindow.getAllWindows().find((x) =>
@@ -903,7 +918,7 @@ test.describe('the sheep window keeps its size (it must never smear across the s
   });
 
   test('moving never changes the size: it stays exactly 52x52 for as long as the sheep walks', async () => {
-    await relaunch();
+    await ready(await relaunch());
     await expect.poll(async () => (await bounds()).width, { timeout: 15_000 }).toBe(52);
     // Sample the real window many times while the sheep walks about, in the main process.
     const sizes = await app.evaluate(async ({ BrowserWindow }) => {
