@@ -9,12 +9,12 @@ TypeScript, with a functional, fully tested core that also powers a
 
 [![CI](https://github.com/milesburton/esheep/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-yellow.svg)](LICENSE)
-[![unit tests: 325/325 passing](https://img.shields.io/badge/unit_tests-325%2F325_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
-[![e2e tests: 74/74 passing](https://img.shields.io/badge/e2e_tests-74%2F74_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
-[![line coverage: 99.3%](https://img.shields.io/badge/line_coverage-99.3%25-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
-[![branch coverage: 95.4%](https://img.shields.io/badge/branch_coverage-95.4%25-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
-![source: 4,230 lines TypeScript](https://img.shields.io/badge/source-4%2C230_lines_TypeScript-blue)
-[![demo size: 265 kB](https://img.shields.io/badge/demo_size-265_kB-blue)](https://milesburton.github.io/esheep/)
+[![unit tests: 350/350 passing](https://img.shields.io/badge/unit_tests-350%2F350_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
+[![e2e tests: 82/82 passing](https://img.shields.io/badge/e2e_tests-82%2F82_passing-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
+[![line coverage: 98.8%](https://img.shields.io/badge/line_coverage-98.8%25-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
+[![branch coverage: 95.1%](https://img.shields.io/badge/branch_coverage-95.1%25-brightgreen)](https://github.com/milesburton/esheep/actions/workflows/ci.yml)
+![source: 4,471 lines TypeScript](https://img.shields.io/badge/source-4%2C471_lines_TypeScript-blue)
+[![demo size: 270 kB](https://img.shields.io/badge/demo_size-270_kB-blue)](https://milesburton.github.io/esheep/)
 
 <!-- metrics:end -->
 
