@@ -22,7 +22,8 @@ export interface KickAboutDeps {
 }
 
 export interface KickAbout {
-  start(): void;
+  /** Put a ball in play; it goes away after `limitMs` (default: the kick-about time limit). */
+  start(limitMs?: number): void;
   stop(): void;
   active(): boolean;
   /** Current ball (a copy), or null when there is no kick-about. */
@@ -48,6 +49,7 @@ export const createKickAbout = (deps: KickAboutDeps): KickAbout => {
   let ball: Ball | null = null;
   let held = false;
   let elapsed = 0;
+  let limit = KICK_ABOUT_MS;
   let kicks = 0;
 
   const stop = (): void => {
@@ -56,8 +58,9 @@ export const createKickAbout = (deps: KickAboutDeps): KickAbout => {
   };
 
   return {
-    start: () => {
+    start: (limitMs = KICK_ABOUT_MS) => {
       if (ball) return;
+      limit = limitMs;
       const area = deps.areas()[0] ?? { x: 0, y: 0, width: 800, height: 600 };
       ball = { x: area.x + area.width / 2, y: area.y + 20, vx: 140, vy: 0 };
       held = false;
@@ -71,7 +74,7 @@ export const createKickAbout = (deps: KickAboutDeps): KickAbout => {
       if (!ball) return false;
       const dt = Math.min(Math.max(0, finite(dtMs)), MAX_STEP_MS);
       elapsed += dt;
-      if (elapsed >= KICK_ABOUT_MS) {
+      if (elapsed >= limit) {
         stop();
         return false;
       }

@@ -533,6 +533,25 @@ describe('chasing and kicking the ball', () => {
     expect(r.kicks[0].vx).toBeLessThan(-350);
   });
 
+  it('in a match, kicks only towards the goal it attacks', () => {
+    const cp = withRun();
+    const attackRight = world({ ball: ballAt(400 + CFG.size + 5), team: { dir: 1 } });
+    const r = runAll(cp, walker(cp, 400, true), attackRight, 300);
+    expect(r.kicks.length).toBe(1);
+    expect(r.kicks[0].vx).toBeGreaterThan(350);
+    const attackLeft = world({ ball: ballAt(400 + CFG.size + 5), team: { dir: -1 } });
+    expect(runAll(cp, walker(cp, 400, true), attackLeft, 300).kicks.length).toBe(0);
+  });
+
+  it('in a match, a sheep on the wrong side runs past the ball and then kicks it the right way', () => {
+    const cp = withRun();
+    // Blue (attacks left) stands left of the ball, so it must get round to the ball's right first.
+    const w = world({ ball: ballAt(500), team: { dir: -1 } });
+    const r = runAll(cp, walker(cp, 420, true), w, 6000);
+    expect(r.kicks.length).toBeGreaterThan(0);
+    expect(r.kicks[0].vx).toBeLessThan(-350);
+  });
+
   it('scales the kick with the sprite scale', () => {
     const cp = withRun();
     const w = world({ ball: ballAt(400 + CFG.size + 5) });

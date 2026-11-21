@@ -87,6 +87,15 @@ describe('kick-about controller', () => {
     expect(k.state()).toEqual(before);
   });
 
+  it('takes its own time limit when started with one (a match outlasts a kick-about)', () => {
+    const k = make();
+    k.start(KICK_ABOUT_MS * 3);
+    run(k, KICK_ABOUT_MS + 1000);
+    expect(k.active()).toBe(true);
+    run(k, KICK_ABOUT_MS * 2);
+    expect(k.active()).toBe(false);
+  });
+
   it('stops itself after the time limit', () => {
     const k = make();
     k.start();

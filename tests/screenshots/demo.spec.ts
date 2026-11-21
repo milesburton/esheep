@@ -34,3 +34,11 @@ test('two monitors', async ({ page }) => {
   await step(page, 9000);
   await page.screenshot({ path: `${OUT}/demo-dual.png` });
 });
+
+test('soccer', async ({ page }) => {
+  await open(page);
+  await step(page, 6000);
+  await page.evaluate(() => window.__demo.matchPlay(true));
+  await step(page, 9000);
+  await page.screenshot({ path: `${OUT}/demo-soccer.png` });
+});

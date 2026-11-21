@@ -442,6 +442,127 @@ test.describe('tag', () => {
   });
 });
 
+test.describe('soccer', () => {
+  /** Put the ball inside a goal mouth, as if it had been kicked in, and let the match notice. */
+  const shoot = async (page: Page, side: 'left' | 'right'): Promise<void> => {
+    const g = await page.locator(side === 'left' ? '.goal.red' : '.goal.blue').boundingBox();
+    const size = await page.locator('#ball').evaluate((el) => el.getBoundingClientRect().width);
+    await page.evaluate(([x, y]) => window.__demo.placeBall(x, y), [
+      g!.x + 2,
+      g!.y + g!.height - size,
+    ] as const);
+    await step(page, 32);
+  };
+  const KICKOFF = 2600;
+
+  test('the button deals two teams of two, draws both goals and a scoreboard, and brings a ball', async ({
+    page,
+  }) => {
+    await open(page);
+    await page.getByRole('button', { name: 'Soccer' }).click();
+    await expect(page.getByRole('button', { name: 'Stop soccer' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('canvas.sheep')).toHaveCount(4);
+    await expect(page.locator('canvas.sheep.team-red')).toHaveCount(2);
+    await expect(page.locator('canvas.sheep.team-blue')).toHaveCount(2);
+    await expect(page.locator('.goal')).toHaveCount(2);
+    await expect(page.locator('#ball')).toHaveCount(1);
+    await expect(page.locator('#scoreboard')).toContainText('RED 0 – 0 BLUE');
+    await expect(page.locator('#scoreboard')).toContainText('Kick-off');
+    expect((await page.evaluate(() => window.__demo.match()))?.teams).toEqual([
+      'red',
+      'blue',
+      'red',
+      'blue',
+    ]);
+    await page.getByRole('button', { name: 'Stop soccer' }).click();
+    await expect(page.locator('.goal, #scoreboard, canvas.sheep.team-red')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__demo.match())).toBeNull();
+  });
+
+  test('the goals sit on the floor at the two ends of the screen', async ({ page }) => {
+    await open(page);
+    await page.evaluate(() => window.__demo.matchPlay(true));
+    const screen = await monitor(page);
+    const left = (await page.locator('.goal.red').boundingBox())!;
+    const right = (await page.locator('.goal.blue').boundingBox())!;
+    expect(Math.abs(left.x - screen.left)).toBeLessThan(2);
+    expect(Math.abs(right.x + right.width - screen.right)).toBeLessThan(2);
+    expect(Math.abs(left.y + left.height - screen.bottom)).toBeLessThan(2);
+    expect(Math.abs(right.y + right.height - screen.bottom)).toBeLessThan(2);
+  });
+
+  test('a ball in the right goal scores for red, then restarts in the middle', async ({ page }) => {
+    await open(page);
+    await hideWindows(page);
+    await page.evaluate(() => window.__demo.matchPlay(true));
+    await step(page, KICKOFF);
+    await shoot(page, 'right');
+    expect(await page.evaluate(() => window.__demo.match())).toMatchObject({ red: 1, blue: 0 });
+    await expect(page.locator('#scoreboard')).toContainText('RED 1 – 0 BLUE');
+    const ball = (await page.evaluate(() => window.__demo.ball()))!;
+    const screen = await monitor(page);
+    expect(Math.abs(ball.x - (screen.left + screen.right) / 2)).toBeLessThan(40); // back at the centre
+    // The kick-off pause: a second shot straight away does not count.
+    await shoot(page, 'right');
+    expect(await page.evaluate(() => window.__demo.match())).toMatchObject({ red: 1 });
+  });
+
+  test('a ball in the left goal scores for blue; five goals win the match, which then ends', async ({
+    page,
+  }) => {
+    await open(page);
+    await hideWindows(page);
+    await page.evaluate(() => window.__demo.matchPlay(true));
+    await step(page, KICKOFF);
+    await shoot(page, 'left');
+    expect(await page.evaluate(() => window.__demo.match())).toMatchObject({ red: 0, blue: 1 });
+    for (let i = 0; i < 4; i++) {
+      await step(page, KICKOFF);
+      await shoot(page, 'left');
+    }
+    expect(await page.evaluate(() => window.__demo.match())).toMatchObject({
+      blue: 5,
+      winner: 'blue',
+    });
+    await expect(page.locator('#scoreboard')).toContainText('BLUE WINS');
+    await step(page, 9000);
+    expect(await page.evaluate(() => window.__demo.match())).toBeNull();
+    await expect(page.locator('.goal')).toHaveCount(0);
+  });
+
+  test('the sheep really play: left alone on an open pitch they score goals', async ({ page }) => {
+    await open(page);
+    await hideWindows(page);
+    await page.evaluate(() => window.__demo.step(6000)); // land
+    await page.evaluate(() => window.__demo.matchPlay(true));
+    let goals = 0;
+    for (let i = 0; i < 150 && goals === 0; i++) {
+      await step(page, 2000);
+      const m = (await page.evaluate(() => window.__demo.match()))!;
+      goals = m.red + m.blue;
+    }
+    expect(goals).toBeGreaterThan(0);
+  });
+
+  test('the bounce sheep cannot play', async ({ page }) => {
+    await open(page, 'manual=1&seed=2&pack=bounce');
+    await page.getByRole('button', { name: 'Soccer' }).click();
+    expect(await page.evaluate(() => window.__demo.match())).toBeNull();
+    await expect(page.locator('.goal')).toHaveCount(0);
+  });
+
+  test('tag and soccer are exclusive', async ({ page }) => {
+    await open(page);
+    await page.evaluate(() => window.__demo.tagPlay(true));
+    await page.evaluate(() => window.__demo.matchPlay(true));
+    expect(await page.evaluate(() => window.__demo.tag())).toBeNull();
+    await expect(page.locator('canvas.sheep.it')).toHaveCount(0);
+  });
+});
+
 test('shrinking the browser window keeps every sheep on the (smaller) screen', async ({ page }) => {
   await open(page);
   await hideWindows(page);

@@ -6,6 +6,7 @@ import { WINDOW_PAD, obstaclesFrom } from '../core/geometry';
 import { enableAutoLaunch } from './autolaunch';
 import { createKickAbout } from './kickabout';
 import { migratePrefs } from './prefs';
+import { createSoccerPlay, MATCH_LIMIT_MS } from './soccerplay';
 import { createTagPlay } from './tagplay';
 import { BUILTIN, listPacks, loadPack } from './pack';
 import { createWindowSource, type NativeWindow, type WindowManagerLike } from './windows';
@@ -171,6 +172,7 @@ const stopKickAbout = (): void => {
   const w = ballWin;
   ballWin = null;
   if (w && !w.isDestroyed()) w.destroy();
+  if (soccer.active()) stopSoccer(); // a match is nothing without its ball
   tray?.setContextMenu(buildTrayMenu());
 };
 
@@ -199,9 +201,9 @@ const createBallWindow = (): BrowserWindow => {
   return win;
 };
 
-const startKickAbout = (): void => {
+const startKickAbout = (limitMs?: number): void => {
   if (kickAbout.active()) return;
-  kickAbout.start();
+  kickAbout.start(limitMs);
   ballWin = createBallWindow();
   let last = Date.now();
   ballTimer = setInterval(() => {
@@ -251,6 +253,7 @@ const stopTag = (): void => {
 
 const startTag = (): void => {
   if (tagPlay.active() || store.get('pack') === BUILTIN) return; // the bounce sheep cannot play
+  stopSoccer(); // one game at a time
   if (sheepWins.length < 2) setSheepCount(2); // it takes two to play
   tagPlay.start(Date.now());
   tagTimer = setInterval(() => {
@@ -262,6 +265,96 @@ const startTag = (): void => {
 const toggleTag = (): void => (tagPlay.active() ? stopTag() : startTag());
 
 const toggleKickAbout = (): void => (kickAbout.active() ? stopKickAbout() : startKickAbout());
+
+// ---- soccer: two teams, a goal at each end, a scoreboard; the match state lives here ---------------
+const SOCCER_STEP_MS = 50;
+const SCORE_W = 220;
+const SCORE_H = 56;
+const soccer = createSoccerPlay({
+  sheepIds: () => tagSprites().map((s) => s.id),
+  size: ballSize,
+  areas: workAreas,
+  now: () => Date.now(),
+  ball: kickAbout,
+});
+let soccerTimer: NodeJS.Timeout | null = null;
+let overlays: { goals: [BrowserWindow, BrowserWindow]; score: BrowserWindow } | null = null;
+
+const createOverlay = (b: Rect, query: Record<string, string>): BrowserWindow => {
+  const win = new BrowserWindow({
+    ...b,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false,
+    hasShadow: false,
+    resizable: false,
+    webPreferences: { preload, contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.setIgnoreMouseEvents(true); // the pitch is only for looking at; clicks go to what is underneath
+  void win.loadFile(page('overlay.html'), { query });
+  return win;
+};
+
+const placeOverlays = (): void => {
+  const g = soccer.state()?.goals;
+  if (!g || !overlays) return;
+  const r = (b: Rect) => ({
+    x: Math.round(b.x),
+    y: Math.round(b.y),
+    width: Math.round(b.width),
+    height: Math.round(b.height),
+  });
+  overlays.goals[0].setBounds(r(g.left));
+  overlays.goals[1].setBounds(r(g.right));
+  const a = workAreas()[0];
+  overlays.score.setBounds({
+    x: Math.round(a.x + (a.width - SCORE_W) / 2),
+    y: a.y + 8,
+    width: SCORE_W,
+    height: SCORE_H,
+  });
+};
+
+function stopSoccer(): void {
+  if (soccerTimer) clearInterval(soccerTimer);
+  soccerTimer = null;
+  const o = overlays;
+  overlays = null;
+  for (const w of o ? [...o.goals, o.score] : []) if (!w.isDestroyed()) w.destroy();
+  const was = soccer.active();
+  soccer.stop();
+  if (was) stopKickAbout(); // takes the ball (and its window) away
+  tray?.setContextMenu(buildTrayMenu());
+}
+
+const startSoccer = (): void => {
+  if (soccer.active() || store.get('pack') === BUILTIN) return; // the bounce sheep cannot play
+  stopTag(); // one game at a time
+  if (sheepWins.length < 4) setSheepCount(4); // two a side
+  startKickAbout(MATCH_LIMIT_MS);
+  soccer.start();
+  const zero = { x: 0, y: 0, width: 10, height: 10 };
+  overlays = {
+    goals: [
+      createOverlay(zero, { kind: 'goal', team: 'red' }),
+      createOverlay(zero, { kind: 'goal', team: 'blue' }),
+    ],
+    score: createOverlay(zero, { kind: 'score' }),
+  };
+  placeOverlays();
+  soccerTimer = setInterval(() => {
+    if (paused) return;
+    soccer.tick();
+    if (!soccer.active()) return stopSoccer(); // the final score has been shown, or the ball ran out
+    placeOverlays();
+  }, SOCCER_STEP_MS);
+  tray?.setContextMenu(buildTrayMenu());
+};
+
+const toggleSoccer = (): void => (soccer.active() ? stopSoccer() : startSoccer());
 
 function buildTrayMenu(): Menu {
   return Menu.buildFromTemplate([
@@ -280,6 +373,11 @@ function buildTrayMenu(): Menu {
       label: tagPlay.active() ? 'Stop tag' : 'Play tag',
       enabled: tagPlay.active() || store.get('pack') !== BUILTIN,
       click: toggleTag,
+    },
+    {
+      label: soccer.active() ? 'Stop soccer match' : 'Play soccer',
+      enabled: soccer.active() || store.get('pack') !== BUILTIN,
+      click: toggleSoccer,
     },
     {
       label: kickAbout.active() ? 'Stop kick-about' : 'Start kick-about',
@@ -303,6 +401,17 @@ ipcMain.handle('load-prefs', () => loadPrefs());
 ipcMain.handle('is-paused', () => paused);
 ipcMain.handle('get-ball', () => kickAbout.state());
 ipcMain.handle('get-tag', (e) => tagPlay.view(e.sender.id));
+ipcMain.handle('get-team', (e) => soccer.view(e.sender.id));
+ipcMain.handle('get-match', () => {
+  const s = soccer.state();
+  return s
+    ? {
+        ...s.match.score,
+        winner: s.match.winner,
+        kickoff: Date.now() < s.match.restartUntil,
+      }
+    : null;
+});
 const num = (n: unknown): number => (typeof n === 'number' && Number.isFinite(n) ? n : 0);
 ipcMain.on('ball-kick', (_e, k: { vx: number; vy: number }) =>
   kickAbout.kick({ vx: num(k?.vx), vy: num(k?.vy) }),
@@ -377,6 +486,20 @@ if (process.env.ESHEEP_TEST === '1') {
         ).length,
       }),
       placeBall: (x: number, y: number) => kickAbout.place(x, y),
+      startSoccer,
+      stopSoccer,
+      soccerState: () => {
+        const s = soccer.state();
+        return {
+          active: soccer.active(),
+          score: s?.match.score ?? null,
+          winner: s?.match.winner ?? null,
+          teams: tagSprites().map((t) => soccer.view(t.id)?.team ?? null),
+          overlays: BrowserWindow.getAllWindows().filter((w) =>
+            w.webContents.getURL().includes('/app/overlay.html'),
+          ).length,
+        };
+      },
       startTag,
       stopTag,
       tagState: () => tagPlay.state(),

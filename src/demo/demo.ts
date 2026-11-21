@@ -1,5 +1,15 @@
 import { ballRect, kickBall, stepBall, type Ball } from '../core/ball.js';
 import { clampIntoAreas, obstaclesFrom } from '../core/geometry.js';
+import {
+  attackDir,
+  formatScore,
+  goalsFor,
+  kickoffSpot,
+  startMatch,
+  stepMatch,
+  teamOf,
+  type Match,
+} from '../core/soccer.js';
 import { startTag, stepTag, viewFor, type Sprite, type TagGame } from '../core/tag.js';
 import { moveDrag, releaseVelocity, startDrag, type Drag } from '../core/pointer.js';
 import { beep } from '../web/sound.js';
@@ -193,6 +203,113 @@ const stepBallFrame = (dt: number): void => {
   ball = stepBall(ball, world(), ballSize(), (Math.min(dt, 50) * prefs.speed) / 1000);
 };
 
+// ---- soccer: two teams, a goal at each end, first to WIN_SCORE -------------------------------------
+let match: Match | null = null;
+let matchEndAt: number | null = null;
+let goalEls: { left: HTMLElement; right: HTMLElement } | null = null;
+let scoreEl: HTMLElement | null = null;
+/** The final score stays up this long (simulated ms) after the winning goal. */
+const FINISH_SHOW_MS = 8000;
+
+const teamViewFor = (stage: Stage): { dir: 1 | -1 } | null => {
+  const sheep = flock.find((s) => s.stage === stage);
+  const team =
+    match && sheep
+      ? teamOf(
+          sheep.id,
+          flock.map((s) => s.id),
+        )
+      : null;
+  return team ? { dir: attackDir(team) } : null;
+};
+
+const drawMatch = (): void => {
+  const ids = flock.map((s) => s.id);
+  for (const s of flock) {
+    const team = match ? teamOf(s.id, ids) : null;
+    s.canvas.classList.toggle('team-red', team === 'red');
+    s.canvas.classList.toggle('team-blue', team === 'blue');
+  }
+  if (!match || !goalEls || !scoreEl) return;
+  const areas = world().areas;
+  scoreEl.style.top = `${(areas[0]?.y ?? 0) + 8}px`; // inside the first display, clear of the toolbar
+  const goals = goalsFor(areas, ballSize());
+  if (goals) {
+    for (const [el, g] of [
+      [goalEls.left, goals.left],
+      [goalEls.right, goals.right],
+    ] as const) {
+      el.style.width = `${g.width}px`;
+      el.style.height = `${g.height}px`;
+      el.style.transform = `translate(${g.x}px, ${g.y}px)`;
+    }
+  }
+  const note = match.winner
+    ? `${match.winner.toUpperCase()} WINS`
+    : clock < match.restartUntil
+      ? 'Kick-off…'
+      : '';
+  scoreEl.innerHTML = `${formatScore(match)}${note ? `<small>${note}</small>` : ''}`;
+};
+
+const kickoff = (): void => {
+  const spot = kickoffSpot(world().areas, ballSize());
+  if (ball) ball = { x: spot.x, y: spot.y, vx: 0, vy: 0 };
+};
+
+const stepMatchFrame = (): void => {
+  if (!match || paused) return;
+  if (matchEndAt !== null) {
+    if (clock >= matchEndAt) stopMatch();
+    return;
+  }
+  const r = stepMatch(match, currentBall(), goalsFor(world().areas, ballSize()), clock);
+  match = r.match;
+  if (r.scored) {
+    if (match.winner) matchEndAt = clock + FINISH_SHOW_MS;
+    else kickoff();
+  }
+  drawMatch();
+};
+
+const startMatchGame = (): void => {
+  if (match || loaded?.pack.kind === 'bounce') return; // the bounce sheep cannot play
+  stopTagGame();
+  while (flock.length < 4 && flock.length < MAX_SHEEP) addSheep(); // two a side
+  wanted = flock.length;
+  startKickAbout();
+  match = startMatch(clock);
+  matchEndAt = null;
+  kickoff();
+  const mk = (side: string): HTMLElement => {
+    const el = document.createElement('div');
+    el.className = `goal ${side}`;
+    document.body.append(el);
+    return el;
+  };
+  goalEls = { left: mk('red'), right: mk('blue') };
+  scoreEl = document.createElement('div');
+  scoreEl.id = 'scoreboard';
+  scoreEl.setAttribute('aria-live', 'polite');
+  document.body.append(scoreEl);
+  $('match').textContent = 'Stop soccer';
+  $('match').setAttribute('aria-pressed', 'true');
+  drawMatch();
+};
+
+function stopMatch(): void {
+  match = null;
+  matchEndAt = null;
+  goalEls?.left.remove();
+  goalEls?.right.remove();
+  goalEls = null;
+  scoreEl?.remove();
+  scoreEl = null;
+  for (const s of flock) s.canvas.classList.remove('team-red', 'team-blue');
+  $('match').textContent = 'Soccer';
+  $('match').setAttribute('aria-pressed', 'false');
+}
+
 // ---- tag --------------------------------------------------------------------------------------
 let tagGame: TagGame | null = null;
 let tagSprites: Sprite[] = [];
@@ -247,6 +364,7 @@ const stopTagGame = (): void => {
 const tickAll = (dt: number): void => {
   if (!paused) clock += dt;
   stepTagFrame();
+  stepMatchFrame();
   stepBallFrame(dt);
   drawBall();
   for (const s of flock) {
@@ -291,6 +409,7 @@ const addSheep = (): void => {
     getWorld: world,
     getPrefs: () => prefs,
     getTag: () => (me ? tagViewFor(me) : null),
+    getTeam: () => (me ? teamViewFor(me) : null),
     getBall: currentBall,
     onKick: (k) => {
       if (!ball || ballDrag) return;
@@ -342,6 +461,7 @@ const start = async (name: string): Promise<void> => {
   }
   for (let i = 0; i < wanted; i++) addSheep();
   if (tagGame) startTagGame(); // the sheep were rebuilt, so deal a new game
+  if (match) drawMatch();
   focus = flock[0] ?? null;
   if (focus) fillAnimations(focus.stage.animations());
   refreshStatus();
@@ -419,6 +539,7 @@ scaleSelect.addEventListener('change', () => {
   void start($<HTMLSelectElement>('pack').value);
 });
 $('tag').addEventListener('click', () => (tagGame ? stopTagGame() : startTagGame()));
+$('match').addEventListener('click', () => (match ? stopMatch() : startMatchGame()));
 $('kickabout').addEventListener('click', () => (ball ? stopKickAbout() : startKickAbout()));
 $('add').addEventListener('click', () => {
   if (flock.length >= MAX_SHEEP) return;
@@ -487,6 +608,30 @@ Object.assign(window, {
     tag: (): { it: number; tags: number } | null =>
       tagGame ? { it: flock.findIndex((s) => s.id === tagGame?.it), tags: tagCount } : null,
     tagPlay: (on: boolean): void => (on ? startTagGame() : stopTagGame()),
+    /** Soccer state: the score, who has won, and each sheep's team. */
+    match: (): {
+      red: number;
+      blue: number;
+      winner: string | null;
+      teams: (string | null)[];
+    } | null =>
+      match
+        ? {
+            ...match.score,
+            winner: match.winner,
+            teams: flock.map((s) =>
+              teamOf(
+                s.id,
+                flock.map((o) => o.id),
+              ),
+            ),
+          }
+        : null,
+    matchPlay: (on: boolean): void => (on ? startMatchGame() : stopMatch()),
+    /** Put the ball somewhere (to stage a goal in a test). */
+    placeBall: (x: number, y: number): void => {
+      if (ball) ball = { x, y, vx: 0, vy: 0 };
+    },
     ready: (): boolean => flock.length > 0,
   },
 });

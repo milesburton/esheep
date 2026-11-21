@@ -869,7 +869,10 @@ export const update = (
       LOCOMOTION.has(s.anim.name)
     ) {
       const chase = chaseBall(s, world.ball, cfg);
-      if (chase?.kickable && s.kickCd <= 0) {
+      // In a match a sheep only kicks towards the goal it attacks; from the wrong side it runs on past
+      // the ball, then turns and gets behind it.
+      const onside = !world.team || chase?.dir === world.team.dir;
+      if (chase?.kickable && onside && s.kickCd <= 0) {
         const [a, r1] = nextRandom(s.rng);
         const [b, r2] = nextRandom(r1);
         const vx = (KICK_VX[0] + a * (KICK_VX[1] - KICK_VX[0])) * cfg.scale;
@@ -881,7 +884,7 @@ export const update = (
           restart(kick.id, 1);
           continue;
         }
-      } else if (chase && !chase.kickable) {
+      } else if (chase && (!chase.kickable || !onside)) {
         s = { ...s, flipped: chase.dir > 0 }; // face the ball (the art faces left, flipped = right)
         const run = cp.byName.get('run');
         if (run && !RUNNING.has(s.anim.name)) {

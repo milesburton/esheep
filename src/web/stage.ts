@@ -53,6 +53,8 @@ export interface StageOptions {
   readonly pixelRatio?: number;
   /** Tag, if it is being played: this sheep's role and who to chase or flee. */
   readonly getTag?: () => TagView | null;
+  /** Soccer, if it is being played: the side this sheep attacks. */
+  readonly getTeam?: () => { dir: 1 | -1 } | null;
   /** The kick-about ball's rectangle, if there is one: sheep chase it. */
   readonly getBall?: () => Rect | null;
   /** A sheep kicked the ball: the velocity it should take. */
@@ -133,7 +135,8 @@ const classicBrain = (o: StageOptions, pack: ClassicPack): Brain => {
       const others = o.getOthers?.() ?? [];
       const ball = o.getBall?.() ?? undefined;
       const tag = o.getTag?.() ?? undefined;
-      const u = update(cp, s, { ...world, others, ball, tag }, cfg, dtMs * prefs.speed);
+      const team = o.getTeam?.() ?? undefined;
+      const u = update(cp, s, { ...world, others, ball, tag, team }, cfg, dtMs * prefs.speed);
       s = u.state;
       u.kicks?.forEach(onKick);
       return prefs.sound && u.started.some((n) => n.startsWith('boing'));

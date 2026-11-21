@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: transparent;
+        font:
+          700 18px/1.2 system-ui,
+          sans-serif;
+        letter-spacing: 0.04em;
+      }
+      #box {
+        box-sizing: border-box;
+        width: 100vw;
+        height: 100vh;
+      }
+      body.goal-red #box,
+      body.goal-blue #box {
+        border: 2px solid;
+        border-bottom: 0;
+      }
+      body.goal-red #box {
+        border-color: #ff5a4d;
+        background: repeating-linear-gradient(0deg, #ff5a4d33 0 3px, transparent 3px 8px);
+      }
+      body.goal-blue #box {
+        border-color: #4da3ff;
+        background: repeating-linear-gradient(0deg, #4da3ff33 0 3px, transparent 3px 8px);
+      }
+      body.score #box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        background: #0b0e17e6;
+        color: #fff;
+      }
+      #note {
+        font-weight: 500;
+        font-size: 12px;
+        letter-spacing: 0;
+        opacity: 0.8;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="box"><span id="score"></span><span id="note"></span></div>
+    <script type="module" src="overlay.js"></script>
+  </body>
+</html>

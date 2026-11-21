@@ -208,7 +208,7 @@ game directly and "it" gets a red glow. In the app the main process owns the gam
 and glows red when it is "it". It is unavailable for the bounce sheep, ends when the pack or size
 changes, and starting it adds a second sheep if there is only one.
 
-Not done: a score or teams (item 1 on the roadmap) and tag between sheep on different levels.
+Not done: tag between sheep on different levels. (Score and teams came later: ADR 28.)
 
 ## 22. Releases: tag-triggered, with a self-tested Windows build
 
@@ -328,3 +328,30 @@ group per tag stops two near-simultaneous CI passes releasing the same version t
 refuses unless you are on a clean, up-to-date `main` with CI green on HEAD, bumps, commits and pushes.
 The decision to release is still a human one (bump the version); everything after it is automatic.
 Releasing on every merge, or deriving the version from conventional commits, would be a further step.
+
+## 28. Soccer: teams, goals and a score
+
+`core/soccer.ts` is a pure, id-based match like tag. Sheep alternate between red and blue by id order
+(`teamOf`), so the sides stay balanced as sheep come and go; red attacks right and blue attacks left.
+The goals are mouths on the floor at the far left and far right of the display area (2 ball-widths
+deep, 9 tall), so they follow multi-monitor layouts. A ball that overlaps a mouth scores for the other
+team, then the match pauses for a 2.5 s kick-off and the ball is put back in the middle; goals are
+ignored during the pause, so one shot scores once. First to 5 wins; the result stays up for 8 s and
+the match ends. A match is cut off after 5 minutes whatever happens, like every opt-in mode.
+
+**Playing the right way round.** The engine gets `World.team = { dir }`. A sheep only kicks when it is
+on the correct side of the ball (the ball is in the direction it attacks); from the wrong side it keeps
+running, past the ball, then turns and kicks. That needs no passing or positional play and still looks
+like a match. Measured in the demo over six seeds: the first goal comes after 4 to 18 simulated
+seconds and a match finishes in 1 to 5 minutes.
+
+**Demo and app.** The demo runs the match directly (Soccer button, DOM goals and scoreboard, teams
+glow red or blue). In the app the main process owns it (`main/soccerplay.ts` on top of the shared
+kick-about ball, so one ball and one set of physics) and shows it with three click-through overlay
+windows: two goals and a scoreboard (`app/overlay.html`). Each sheep window polls `get-team` for its
+team and glows in its colour. It is unavailable for the bounce sheep, tops the sheep up to four (two a
+side), and starting tag or stopping the ball ends it. `kickAbout.start` gained a time limit so a match
+can outlast a plain kick-about.
+
+Not done: passing, positions or a goalkeeper, a throw-in when the ball leaves play, and picking the
+teams yourself.

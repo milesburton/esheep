@@ -19,6 +19,9 @@ interface Window {
     kicks(): number;
     tag(): { it: number; tags: number } | null;
     tagPlay(on: boolean): void;
+    match(): { red: number; blue: number; winner: string | null; teams: (string | null)[] } | null;
+    matchPlay(on: boolean): void;
+    placeBall(x: number, y: number): void;
     ready(): boolean;
   };
 }

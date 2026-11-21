@@ -36,6 +36,11 @@ TypeScript, with a functional, fully tested core that also powers a
 </figure>
 
 <figure>
+  <img src="docs/screenshots/demo-soccer.png" alt="Two teams of sheep glowing red and blue playing soccer, with a goal at each end and a scoreboard" width="720" />
+  <figcaption>Soccer: two teams, a goal at each end and a scoreboard.</figcaption>
+</figure>
+
+<figure>
   <img src="docs/screenshots/app-settings.png" alt="The settings window with a speed slider, sprite pack picker and sound option" width="720" />
   <figcaption>The desktop app's settings window.</figcaption>
 </figure>
@@ -75,6 +80,10 @@ windows and an optional second monitor. Grab the sheep, fling it, and watch it l
 - **Kick-about** (demo): press _Kick-about_ and a ball drops in; the sheep notice it, run over and
   kick it around. Grab and throw the ball yourself and they chase it. Packs without a kick animation
   borrow the run skid.
+- **Soccer** (demo and app): two teams of two glow red and blue and play first to five at goals on the
+  floor at each end of the screen, with a scoreboard and a kick-off after every goal. A sheep only
+  kicks towards the goal it attacks, so it runs past the ball and turns to get behind it. Start it from
+  the demo's _Soccer_ button or the tray.
 - **High resolution**: the canvas is rendered at the display's physical resolution with smoothing off,
   so the pixel art stays crisp on retina and 4K screens (and follows a window between monitors of
   different density). A **Size** setting draws the sheep ×1 to ×4 (whole numbers look best); speed
@@ -117,7 +126,7 @@ The Electron end-to-end tests need a display. On a headless Linux box run them u
 
 ## Using it
 
-- **Tray icon**: Pause / Resume, Add sheep, Remove sheep, Play / Stop tag, Start / Stop kick-about, Settings…, Quit.
+- **Tray icon**: Pause / Resume, Add sheep, Remove sheep, Play / Stop tag, Play / Stop soccer, Start / Stop kick-about, Settings…, Quit.
 - **Grab**: press on the sheep and hold. It dangles. Move to carry it.
 - **Drop**: release while the pointer is still, and it falls under gravity.
 - **Toss**: release mid-flick. Throw speed is capped at 3,200 px/s.

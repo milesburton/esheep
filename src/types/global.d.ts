@@ -98,6 +98,15 @@ interface ElectronAPI {
   onPrefsChanged: (cb: (prefs: Prefs) => void) => void;
   /** This sheep's part in a game of tag (role and who to chase or flee), or null if none is on. */
   getTag: () => Promise<{ role: 'it' | 'runner'; target: Rect | null; wait: boolean } | null>;
+  /** This sheep's team in a soccer match and the side it attacks (1 = right), or null if none is on. */
+  getTeam: () => Promise<{ team: 'red' | 'blue'; dir: 1 | -1 } | null>;
+  /** The soccer score for the scoreboard window, or null if no match is on. */
+  getMatch: () => Promise<{
+    red: number;
+    blue: number;
+    winner: 'red' | 'blue' | null;
+    kickoff: boolean;
+  } | null>;
   /** The shared kick-about ball (px, with velocity), or null when there is none. */
   getBall: () => Promise<{ x: number; y: number; size: number; vx: number; vy: number } | null>;
   /** A sheep kicked the ball: the velocity it should take. */
@@ -126,4 +135,6 @@ interface World {
   tag?: { role: 'it' | 'runner'; target: Rect | null; wait: boolean };
   /** The kick-about ball, if there is one (sheep chase and kick it). */
   ball?: Rect;
+  /** Soccer, if it is being played: the side this sheep attacks (1 = right, -1 = left). */
+  team?: { dir: 1 | -1 };
 }

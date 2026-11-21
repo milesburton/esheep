@@ -106,8 +106,10 @@ test.describe('sheep window', () => {
         'ballMove',
         'ballRelease',
         'getBall',
+        'getMatch',
         'getOtherSheep',
         'getTag',
+        'getTeam',
         'getWindows',
         'getWorkAreas',
         'isPaused',
@@ -162,6 +164,7 @@ test.describe('tray menu and pause', () => {
       'Add sheep',
       'Remove sheep',
       'Play tag',
+      'Play soccer',
       'Start kick-about',
       'Settings…',
       'Quit',
@@ -176,6 +179,7 @@ test.describe('tray menu and pause', () => {
       'Add sheep',
       'Remove sheep',
       'Play tag',
+      'Play soccer',
       'Start kick-about',
       'Settings…',
       'Quit',
@@ -191,6 +195,7 @@ test.describe('tray menu and pause', () => {
       'Add sheep',
       'Remove sheep',
       'Play tag',
+      'Play soccer',
       'Start kick-about',
       'Settings…',
       'Quit',
@@ -461,6 +466,125 @@ test.describe('tag', () => {
     await seam((s) => s.stopTag());
     expect(await seam((s) => s.tagState())).toBeNull();
     await expect.poll(glowing).toBe(0);
+  });
+});
+
+test.describe('soccer', () => {
+  type Seam = {
+    startSoccer(): void;
+    stopSoccer(): void;
+    startTag(): void;
+    tagState(): { it: number | null; tags: number } | null;
+    soccerState(): {
+      active: boolean;
+      score: { red: number; blue: number } | null;
+      winner: string | null;
+      teams: (string | null)[];
+      overlays: number;
+    };
+    kickAbout(): { active: boolean; windows: number };
+    placeBall(x: number, y: number): void;
+    sheepCount(): number;
+    trayLabels(): string[];
+  };
+  const seam = <T>(fn: (s: Seam) => T): Promise<T> =>
+    app.evaluate(
+      (_e, src) =>
+        new Function('s', `return (${src})(s)`)(
+          (globalThis as unknown as { __esheep: Seam }).__esheep,
+        ) as unknown,
+      fn.toString(),
+    ) as Promise<T>;
+  const state = () => seam((s) => s.soccerState());
+  const glowing = (): Promise<number> =>
+    app.evaluate(({ BrowserWindow }) =>
+      Promise.all(
+        BrowserWindow.getAllWindows()
+          .filter((w) => w.webContents.getURL().endsWith('/app/index.html'))
+          .map((w) =>
+            w.webContents.executeJavaScript(
+              "document.querySelector('canvas').style.filter.includes('drop-shadow')",
+            ),
+          ),
+      ).then((flags) => flags.filter(Boolean).length),
+    );
+
+  test('is unavailable for the bounce sheep, which cannot play', async () => {
+    await sheepPage();
+    await seam((s) => s.startSoccer());
+    expect((await state()).active).toBe(false);
+  });
+
+  test('a match: two teams of two, glowing, with goals and a scoreboard, a goal scores, and stopping tidies up', async () => {
+    test.setTimeout(150_000);
+    const page = await sheepPage();
+    page.evaluate(() =>
+      window.electronAPI.savePrefs({ speed: 1, sound: false, pack: 'woolly', count: 2, scale: 1 }),
+    );
+    await expect.poll(() => seam((s) => s.sheepCount())).toBe(2); // the new pack is saved by now
+    await seam((s) => s.startSoccer());
+    // It brings the sheep up to four, a ball, two goals and a scoreboard.
+    await expect.poll(() => seam((s) => s.sheepCount())).toBe(4);
+    expect(await seam((s) => s.trayLabels())).toContain('Stop soccer match');
+    await expect.poll(async () => (await state()).overlays, { timeout: 20_000 }).toBe(3);
+    const s0 = await state();
+    expect(s0.active).toBe(true);
+    expect(s0.score).toEqual({ red: 0, blue: 0 });
+    expect(s0.teams.filter((t) => t === 'red')).toHaveLength(2);
+    expect(s0.teams.filter((t) => t === 'blue')).toHaveLength(2);
+    expect((await seam((s) => s.kickAbout())).active).toBe(true);
+    await expect.poll(glowing, { timeout: 10_000 }).toBe(4);
+    // Put the ball in the left goal once the kick-off pause is over: that is a goal for blue.
+    await new Promise((r) => setTimeout(r, 2800)); // the kick-off pause
+    await app.evaluate(({ screen }, size) => {
+      const a = screen.getPrimaryDisplay().workArea;
+      (
+        globalThis as unknown as { __esheep: { placeBall(x: number, y: number): void } }
+      ).__esheep.placeBall(a.x + 2, a.y + a.height - size);
+    }, 14);
+    await expect.poll(async () => (await state()).score?.blue, { timeout: 10_000 }).toBe(1);
+    // Stopping takes the match, ball, goals, scoreboard and glow away.
+    await seam((s) => s.stopSoccer());
+    expect((await state()).active).toBe(false);
+    await expect.poll(async () => (await state()).overlays).toBe(0);
+    expect((await seam((s) => s.kickAbout())).windows).toBe(0);
+    expect(await seam((s) => s.trayLabels())).toContain('Play soccer');
+    await expect.poll(glowing).toBe(0);
+  });
+
+  test('the sheep really play: left to themselves in the real app they score', async () => {
+    test.setTimeout(170_000);
+    const page = await sheepPage();
+    page.evaluate(() =>
+      window.electronAPI.savePrefs({ speed: 2, sound: false, pack: 'woolly', count: 4, scale: 1 }),
+    );
+    await expect.poll(() => seam((s) => s.sheepCount())).toBe(4);
+    const bottom = await workAreaBottom();
+    await expect.poll(async () => (await sheepBounds()).y + 46, { timeout: 30_000 }).toBe(bottom);
+    await seam((s) => s.startSoccer());
+    await expect
+      .poll(
+        async () => {
+          const sc = (await state()).score;
+          return (sc?.red ?? 0) + (sc?.blue ?? 0);
+        },
+        { timeout: 150_000, intervals: [1000] },
+      )
+      .toBeGreaterThan(0);
+  });
+
+  test('starting tag ends the match (one game at a time)', async () => {
+    const page = await sheepPage();
+    page.evaluate(() =>
+      window.electronAPI.savePrefs({ speed: 1, sound: false, pack: 'woolly', count: 4, scale: 1 }),
+    );
+    await expect.poll(() => seam((s) => s.sheepCount())).toBe(4);
+    await seam((s) => s.startSoccer());
+    expect((await state()).active).toBe(true);
+    await seam((s) => s.startTag());
+    expect((await state()).active).toBe(false);
+    await expect.poll(async () => (await state()).overlays).toBe(0);
+    expect((await seam((s) => s.tagState()))?.it).not.toBeNull();
   });
 });
 

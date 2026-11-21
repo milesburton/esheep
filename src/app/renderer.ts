@@ -34,6 +34,9 @@ const run = async (): Promise<void> => {
   /** This sheep's part in tag, as last polled. */
   let tag: { role: 'it' | 'runner'; target: Rect | null; wait: boolean } | null = null;
 
+  /** This sheep's team in a soccer match, as last polled. */
+  let team: { team: 'red' | 'blue'; dir: 1 | -1 } | null = null;
+
   const sheet =
     pack.kind === 'classic'
       ? await loadClassicSheet(pack)
@@ -56,6 +59,7 @@ const run = async (): Promise<void> => {
     getPrefs: () => prefs,
     getOthers: () => others,
     getTag: () => tag,
+    getTeam: () => team,
     getBall: () => {
       if (!ball) return null;
       const age = Math.min((performance.now() - ballAt) / 1000, 0.1);
@@ -87,8 +91,14 @@ const run = async (): Promise<void> => {
   setInterval(async () => {
     tag = await api.getTag();
     // "It" glows red (tight, since the window margin clips anything wider).
-    canvas.style.filter =
-      tag?.role === 'it' ? 'drop-shadow(0 0 2px #ff3d3d) drop-shadow(0 0 3px #ff3d3d)' : '';
+    team = await api.getTeam();
+    // Soccer teams glow in their colour, the same way.
+    const glow = (c: string): string => `drop-shadow(0 0 2px ${c}) drop-shadow(0 0 3px ${c})`;
+    canvas.style.filter = team
+      ? glow(team.team === 'red' ? '#ff5a4d' : '#4da3ff')
+      : tag?.role === 'it'
+        ? glow('#ff3d3d')
+        : '';
     ball = await api.getBall();
     ballAt = performance.now();
     const mine = live.stage?.rect();
